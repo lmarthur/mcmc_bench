@@ -20,6 +20,8 @@ import numpy as np
 
 from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS
 
+NUTS_OUTPUT_DIR = OUTPUT_DIR / "nuts"
+
 NUM_WARMUP = 1000
 NUM_SAMPLES = 5000
 NUM_CHAINS = 5
@@ -138,10 +140,10 @@ def main():
     print(f"  Bulk ESS per gradient eval: {ess_per_grad:.4f}")
 
     # --- Save results ---
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    NUTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    idata.to_netcdf(str(OUTPUT_DIR / "nuts_idata.nc"))
-    print(f"Saved InferenceData to {OUTPUT_DIR / 'nuts_idata.nc'}")
+    idata.to_netcdf(str(NUTS_OUTPUT_DIR / "idata.nc"))
+    print(f"Saved InferenceData to {NUTS_OUTPUT_DIR / 'idata.nc'}")
 
     diagnostics = {
         "sampler": "NUTS",
@@ -161,7 +163,7 @@ def main():
         "bulk_ess_per_grad_eval": float(ess_per_grad),
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = OUTPUT_DIR / "nuts_diagnostics.json"
+    diag_path = NUTS_OUTPUT_DIR / "diagnostics.json"
     with open(diag_path, "w") as f:
         json.dump(diagnostics, f, indent=2)
     print(f"Saved diagnostics to {diag_path}")
@@ -186,10 +188,26 @@ def main():
         axes[i + 1].set_title(f"Trace: {label}")
 
     fig.tight_layout()
-    out_path = OUTPUT_DIR / "nuts_samples.png"
+    out_path = NUTS_OUTPUT_DIR / "samples.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved samples plot to {out_path}")
+
+    # --- Corner plot ---
+    corner_axes = az.plot_pair(
+        idata,
+        var_names=["x1", "x2"],
+        kind=["scatter", "kde"],
+        scatter_kwargs={"alpha": 0.05, "s": 2},
+        kde_kwargs={"contourf_kwargs": {"alpha": 0.3}},
+        marginals=True,
+        figsize=(6, 6),
+    )
+    corner_fig = corner_axes.ravel()[0].get_figure()
+    corner_path = NUTS_OUTPUT_DIR / "corner.png"
+    corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
+    plt.close(corner_fig)
+    print(f"Saved corner plot to {corner_path}")
 
 
 if __name__ == "__main__":
