@@ -19,3 +19,4 @@ jax_cache/
 
 # OS
 .DS_Store
+.coverage

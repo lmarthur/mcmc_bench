@@ -13,7 +13,17 @@ dependencies = [
     "arviz",
     "ipython",
     "pytest",
+    "pytest-cov",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report=term-missing"
+
+[tool.coverage.run]
+include = ["*/src/*"]
+
+[tool.coverage.report]
+fail_under = 80
 
 [project.optional-dependencies]
 cpu = ["jax[cpu]", "jaxlib"]
