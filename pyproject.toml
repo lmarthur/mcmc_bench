@@ -1,0 +1,18 @@
+[project]
+name = "blackjax-benchmarks"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "blackjax",
+    "exojax",
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "optax",
+    "arviz",
+]
+
+[project.optional-dependencies]
+cpu = ["jax[cpu]", "jaxlib"]
+gpu = ["jax[cuda12]", "jaxlib"]
+

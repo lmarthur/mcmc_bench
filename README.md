@@ -3,6 +3,23 @@
 Project Pre-proposal Google Docs [link](https://docs.google.com/document/d/10dxllF_9HKoAEWeWYtg3HkMVfwvhc1fx0QWjYhUD3fQ/edit?usp=sharing)
 
 
+# Setup
+
+## Prerequisites
+- [conda](https://docs.conda.io/en/latest/) (or miniconda)
+- [uv](https://github.com/astral-sh/uv) — installed automatically in step 2
+
+## Installation
+
+```bash
+conda create -n mcmc_bench python=3.11 -y
+conda activate mcmc_bench
+pip install uv
+bash setup_env.sh
+```
+
+`setup_env.sh` detects whether a CUDA-capable GPU is available and installs `jax[cuda12]` or `jax[cpu]` accordingly. All other dependencies are defined in `pyproject.toml`.
+
 # Proposal Outline
 
 ## What do you want to do? What questions are you answering?
