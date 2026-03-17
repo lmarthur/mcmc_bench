@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-BASE_DEPS="blackjax numpyro exojax numpy matplotlib scipy optax arviz ipython"
+BASE_DEPS="blackjax numpyro exojax numpy matplotlib scipy optax arviz ipython pytest"
 
 if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     echo "GPU detected — installing jax[cuda12]"

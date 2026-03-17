@@ -12,6 +12,7 @@ dependencies = [
     "optax",
     "arviz",
     "ipython",
+    "pytest",
 ]
 
 [project.optional-dependencies]

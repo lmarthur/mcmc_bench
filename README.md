@@ -20,6 +20,12 @@ bash setup_env.sh
 
 `setup_env.sh` detects whether a CUDA-capable GPU is available and installs `jax[cuda12]` or `jax[cpu]` accordingly. All other dependencies are defined in `pyproject.toml`.
 
+## Running tests
+
+```bash
+pytest --rootdir=. -v
+```
+
 # Proposal Outline
 
 ## What do you want to do? What questions are you answering?
