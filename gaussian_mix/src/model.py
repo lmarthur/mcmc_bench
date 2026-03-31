@@ -4,6 +4,11 @@
 The target distribution is a mixture of K isotropic Gaussians in 2D:
     p(x) = sum_k w_k * N(x | mu_k, sigma_k^2 * I)
 
+Default configuration: 8 components arranged on a regular octagon (radius 7),
+with alternating heavy (w=0.175) and light (w=0.075) weights. Nearest-neighbor
+distance is ~5.4σ, making inter-mode transitions rare enough to expose
+mode-missing and weight-estimation failures simultaneously.
+
 A NumPyro model is used to define the joint, and numpyro.infer.util.log_density
 is used to extract a BlackJAX-compatible log-density function.
 """
@@ -21,14 +26,14 @@ from numpyro.infer.util import log_density
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
-# Default mixture: 3 well-separated modes of equal weight
-DEFAULT_MEANS = jnp.array([
-    [-5.0,  0.0],
-    [ 5.0,  0.0],
-    [ 0.0,  5.0],
-])
-DEFAULT_SCALES = jnp.array([1.0, 1.0, 1.0])
-DEFAULT_WEIGHTS = jnp.array([1/3, 1/3, 1/3])
+# Default mixture: 8 components on a regular octagon of radius 7.
+# Modes at angles k*pi/4 for k=0..7; alternating heavy/light weights.
+# Nearest-neighbor distance = 2 * 7 * sin(pi/8) ≈ 5.36 (in units of sigma=1).
+_R = 7.0
+_ANGLES = jnp.array([k * jnp.pi / 4 for k in range(8)])
+DEFAULT_MEANS = jnp.stack([_R * jnp.cos(_ANGLES), _R * jnp.sin(_ANGLES)], axis=-1)
+DEFAULT_SCALES = jnp.ones(8)
+DEFAULT_WEIGHTS = jnp.array([0.175, 0.075, 0.175, 0.075, 0.175, 0.075, 0.175, 0.075])
 
 
 def gaussian_mixture(means=DEFAULT_MEANS, scales=DEFAULT_SCALES, weights=DEFAULT_WEIGHTS):
@@ -75,7 +80,7 @@ def plot_model(
     means=DEFAULT_MEANS,
     scales=DEFAULT_SCALES,
     weights=DEFAULT_WEIGHTS,
-    grid_range=(-8, 8),
+    grid_range=(-10, 10),
     resolution=200,
     filename="gaussian_mixture.png",
 ):

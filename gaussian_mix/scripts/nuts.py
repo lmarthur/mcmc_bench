@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
 
 NUTS_OUTPUT_DIR = OUTPUT_DIR / "nuts"
 
@@ -124,9 +124,10 @@ def main():
     print(f"  Mean tree depth (steps):    {num_integration_steps.mean():.1f}  (max observed: {int(max_steps)})")
     print(f"  Tree depth saturation:      {saturation_frac:.1%}")
     print()
-    print(f"  Mode weight recovery (true = {1/num_modes:.3f} each):")
-    for k, w in enumerate(mode_weights):
-        print(f"    Mode {k}: {w:.3f}")
+    true_weights = np.array(DEFAULT_WEIGHTS)
+    print(f"  Mode weight recovery (empirical vs true):")
+    for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
+        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
     print()
     print(f"  Inter-mode transitions per chain: {transitions.tolist()}")
     if stuck_chains:
@@ -157,7 +158,7 @@ def main():
         "max_integration_steps": int(max_steps),
         "tree_depth_saturation": float(saturation_frac),
         "mode_weights": mode_weights.tolist(),
-        "true_mode_weight": 1 / num_modes,
+        "true_mode_weights": np.array(DEFAULT_WEIGHTS).tolist(),
         "inter_mode_transitions": transitions.tolist(),
         "stuck_chains": stuck_chains,
         "bulk_ess_per_grad_eval": float(ess_per_grad),
