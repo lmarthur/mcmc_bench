@@ -24,7 +24,7 @@ def test_default_weights_sum_to_one():
 
 
 def test_default_means_shape():
-    assert DEFAULT_MEANS.shape == (3, 2)
+    assert DEFAULT_MEANS.shape == (8, 2)
 
 
 def test_default_scales_positive():
@@ -68,10 +68,13 @@ def test_custom_weights():
     assert log_p_mode0 > log_p_mode1
 
 
-def test_equal_density_at_symmetric_modes():
-    """With equal weights, all mode centers should have the same log density."""
+def test_density_at_modes_matches_weights():
+    """Heavy modes (even indices) should have equal log density to each other,
+    light modes (odd indices) likewise, and heavy > light."""
     log_density_fn = make_log_density()
     log_ps = [float(log_density_fn(mean)) for mean in DEFAULT_MEANS]
-    assert np.allclose(log_ps, log_ps[0], atol=1e-5), (
-        f"Expected equal density at all modes, got {log_ps}"
-    )
+    heavy = [log_ps[k] for k in range(0, 8, 2)]
+    light = [log_ps[k] for k in range(1, 8, 2)]
+    assert np.allclose(heavy, heavy[0], atol=1e-5), f"Heavy modes not equal: {heavy}"
+    assert np.allclose(light, light[0], atol=1e-5), f"Light modes not equal: {light}"
+    assert heavy[0] > light[0], "Heavy modes should have higher density than light modes"
