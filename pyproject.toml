@@ -16,7 +16,8 @@ dependencies = [
     "pytest-cov",
     "jaxns",
     "tensorflow",
-    "emcee_jax @ git+https://github.com/SamMerc/emcee-jax.git"
+    "emcee_jax @ git+https://github.com/SamMerc/emcee-jax.git",
+    "sajax @ git+https://github.com/SamMerc/sajax.git"
 ]
 
 [tool.pytest.ini_options]
