@@ -36,7 +36,7 @@ def main():
     print("Plotting model...")
     plot_model()
 
-    # --- Initialize chains from random starting positions ---
+    # --- Initialize walkers from random starting positions ---
     coords = jax.random.normal(init_key, shape=(NUM_WALKERS, NDIM))
 
     # --- Initialize sampler ---
@@ -47,8 +47,9 @@ def main():
     print(f"Sampling ({NUM_SAMPLES} steps, {NUM_WALKERS} walkers)...")
     trace = sampler.sample_parallel(sample_key, state, NUM_SAMPLES)
 
-    # --- Retrieve samples ---
-    samples = np.asarray(trace.samples.coordinates).reshape(NUM_WALKERS, NUM_SAMPLES, NDIM)  # shape (walkers, nsteps, nparams)
+    # samples shape: (NUM_STEPS, NUM_WALKERS, NDIM) -> reshape to (NUM_WALKERS, NUM_SAMPLES, NDIM)
+    raw = np.asarray(trace.samples.coordinates)  # (NUM_SAMPLES, NUM_WALKERS, NDIM)
+    samples = raw.transpose(1, 0, 2)             # (NUM_WALKERS, NUM_SAMPLES, NDIM)
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
@@ -64,56 +65,51 @@ def main():
     # Mode weights
     mode_weights = np.bincount(flat_assignments, minlength=num_modes) / flat_assignments.size
 
-    # Inter-mode transitions per chain
+    # Inter-mode transitions per walker
     transitions = np.sum(np.diff(chain_assignments, axis=1) != 0, axis=1)
 
-    # Stuck chains (never leave one mode)
+    # Stuck walkers (never leave one mode)
     stuck_chains = [c for c in range(NUM_WALKERS) if np.unique(chain_assignments[c]).size == 1]
 
-    # ESS per gradient evaluation (NUTS: num_integration_steps ~ grad evals per step)
-    num_integration_steps = np.array(all_infos.num_integration_steps)
+    # Acceptance rate: emcee stores per-step acceptance as a boolean array
+    # trace.samples has an `accept_prob` field: (NUM_SAMPLES, NUM_WALKERS)
+    accepted = np.asarray(trace.sample_stats['accept_prob'])   # (NUM_SAMPLES, NUM_WALKERS)
+    acceptance = float(accepted.mean())
+
+    # Cost metric: each step proposes one move per walker -> NUM_WALKERS log-density evals per step
+    total_log_density_evals = NUM_WALKERS * NUM_SAMPLES
 
     # ArviZ summary: R-hat, bulk/tail ESS, MCSE
+    # emcee has no per-step tree-depth info, so sample_stats only carries acceptance
     idata = az.from_dict(
         posterior={"x1": samples[:, :, 0], "x2": samples[:, :, 1]},
-        sample_stats={
-            "acceptance_rate": np.array(trace.sample_stats.accept_prob),
-            "n_steps": num_integration_steps,
-        },
+        sample_stats={"acceptance_rate": accepted.T},  # (NUM_WALKERS, NUM_SAMPLES)
     )
     summary = az.summary(idata, var_names=["x1", "x2"])
-    total_grad_evals = num_integration_steps.sum()
     total_bulk_ess = summary["ess_bulk"].sum()
-    ess_per_grad = total_bulk_ess / total_grad_evals
 
-    # Tree depth saturation (fraction of steps hitting the max observed tree depth)
-    max_steps = num_integration_steps.max()
-    saturation_frac = np.mean(num_integration_steps == max_steps)
-
-    # Acceptance rate
-    acceptance = np.mean(np.array(trace.sample_stats.accept_prob))
+    # ESS per log-density evaluation (analogous to NUTS's ESS per grad eval)
+    ess_per_logp_eval = total_bulk_ess / total_log_density_evals
 
     print("\n=== Diagnostics ===")
-    print(f"  Mean acceptance rate:       {acceptance:.3f}")
-    print(f"  Total gradient evaluations: {int(total_grad_evals)}")
-    print(f"  Mean tree depth (steps):    {num_integration_steps.mean():.1f}  (max observed: {int(max_steps)})")
-    print(f"  Tree depth saturation:      {saturation_frac:.1%}")
+    print(f"  Mean acceptance rate:          {acceptance:.3f}")
+    print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
     print()
     true_weights = np.array(DEFAULT_WEIGHTS)
     print(f"  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
         print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
     print()
-    print(f"  Inter-mode transitions per chain: {transitions.tolist()}")
+    print(f"  Inter-mode transitions per walker: {transitions.tolist()}")
     if stuck_chains:
-        print(f"  WARNING: stuck chains (never left one mode): {stuck_chains}")
+        print(f"  WARNING: stuck walkers (never left one mode): {stuck_chains}")
     else:
-        print(f"  No stuck chains detected.")
+        print(f"  No stuck walkers detected.")
     print()
     print("  ArviZ summary (R-hat, ESS, MCSE):")
     print(summary.to_string())
     print()
-    print(f"  Bulk ESS per gradient eval: {ess_per_grad:.4f}")
+    print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
 
     # --- Save results ---
     AFFINV_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -122,20 +118,17 @@ def main():
     print(f"Saved InferenceData to {AFFINV_OUTPUT_DIR / 'idata.nc'}")
 
     diagnostics = {
-        "sampler": "NUTS",
-        "num_chains": NUM_WALKERS,
-        "num_warmup": NUM_BURNIN,
+        "sampler": "AffineInvariantMCMC",
+        "num_walkers": NUM_WALKERS,
+        "num_burnin": NUM_BURNIN,
         "num_samples": NUM_SAMPLES,
         "mean_acceptance_rate": float(acceptance),
-        "total_grad_evals": int(total_grad_evals),
-        "mean_integration_steps": float(num_integration_steps.mean()),
-        "max_integration_steps": int(max_steps),
-        "tree_depth_saturation": float(saturation_frac),
+        "total_log_density_evals": int(total_log_density_evals),
+        "bulk_ess_per_logp_eval": float(ess_per_logp_eval),
         "mode_weights": mode_weights.tolist(),
         "true_mode_weights": np.array(DEFAULT_WEIGHTS).tolist(),
         "inter_mode_transitions": transitions.tolist(),
         "stuck_chains": stuck_chains,
-        "bulk_ess_per_grad_eval": float(ess_per_grad),
         "arviz_summary": json.loads(summary.to_json()),
     }
     diag_path = AFFINV_OUTPUT_DIR / "diagnostics.json"
@@ -144,7 +137,6 @@ def main():
     print(f"Saved diagnostics to {diag_path}")
 
     # --- Plots ---
-
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
 
     colors = plt.cm.tab10(np.linspace(0, 1, NUM_WALKERS))
@@ -152,7 +144,7 @@ def main():
         axes[0].scatter(samples[c, :, 0], samples[c, :, 1], alpha=0.15, s=2, color=colors[c])
     axes[0].set_xlabel("x1")
     axes[0].set_ylabel("x2")
-    axes[0].set_title(f"NUTS samples ({NUM_WALKERS} chains)")
+    axes[0].set_title(f"Affine Invariant MCMC samples ({NUM_WALKERS} walkers)")
     axes[0].set_aspect("equal")
 
     for i, label in enumerate(["x1", "x2"]):
