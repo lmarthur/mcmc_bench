@@ -22,9 +22,10 @@ from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAU
 
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
-NUM_WARMUP = 1000
+NUM_BURNIN = 1000
 NUM_SAMPLES = 5000
 NUM_CHAINS = 5
+STEP_SIZE = 0.5
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
@@ -39,38 +40,36 @@ def inference_loop(rng_key, kernel, initial_state, num_samples):
 
 
 def main():
-    rng_key = jax.random.PRNGKey(0)
+    init_key, burnin_key, sample_key = jax.random.split(jax.random.PRNGKey(0), 3)
 
     # --- Model ---
     log_density_fn = make_log_density()
     print("Plotting model...")
     plot_model()
 
-    # --- Warmup: adapt one chain, share parameters across all chains ---
-    print(f"Running warmup ({NUM_WARMUP} steps)...")
-    warmup_key, sample_key = jax.random.split(rng_key)
-    warmup = blackjax.window_adaptation(blackjax.rmh, log_density_fn)
-    initial_position = jnp.array([0.0, 0.0])
-    (_, parameters), _ = warmup.run(warmup_key, initial_position, num_steps=NUM_WARMUP)
-    print(f"  Adapted step size: {parameters['step_size']:.4f}")
-
     # --- Initialize chains from random starting positions ---
-    init_key, sample_key = jax.random.split(sample_key)
-    initial_positions = jax.random.normal(init_key, shape=(NUM_CHAINS, 2)) * 3.0
+    initial_positions = jax.random.normal(init_key, shape=(NUM_CHAINS, 2))
 
-    kernel = blackjax.rmh(log_density_fn, **parameters)
+    kernel = blackjax.rmh(log_density_fn, proposal_generator=blackjax.mcmc.random_walk.normal(sigma=STEP_SIZE))
     init_fn = jax.vmap(kernel.init)
     initial_states = init_fn(initial_positions)
 
-    # --- Run chains in parallel with vmap ---
-    print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
-    chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
+    # --- Burn-in (discard, just to move chains away from starting positions) ---
+    print(f"Running burn-in ({NUM_BURNIN} steps)...")
+    burnin_keys = jax.random.split(burnin_key, NUM_CHAINS)
 
     @jax.vmap
     def run_chain(rng_key, initial_state):
-        return inference_loop(rng_key, kernel.step, initial_state, NUM_SAMPLES)
+        return inference_loop(rng_key, kernel.step, initial_state, NUM_BURNIN)
 
-    all_states, all_infos = run_chain(chain_sample_keys, initial_states)
+    burnin_states, _ = run_chain(burnin_keys, initial_states)
+    # Grab the last state of each chain as the starting point for sampling
+    post_burnin_states = jax.tree.map(lambda x: x[:, -1], burnin_states)
+
+    # --- Sample ---
+    print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
+    chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
+    all_states, all_infos = run_chain(chain_sample_keys, post_burnin_states)
 
     # all_states.position: (NUM_CHAINS, NUM_SAMPLES, 2)
     samples = np.array(all_states.position)
@@ -95,34 +94,28 @@ def main():
     # Stuck chains (never leave one mode)
     stuck_chains = [c for c in range(NUM_CHAINS) if np.unique(chain_assignments[c]).size == 1]
 
-    # ESS per gradient evaluation (NUTS: num_integration_steps ~ grad evals per step)
-    num_integration_steps = np.array(all_infos.num_integration_steps)
+    # Acceptance rate: blackjax rmh populates all_infos.acceptance_rate per step
+    # shape: (NUM_CHAINS, NUM_SAMPLES)
+    acceptance = float(np.mean(np.array(all_infos.acceptance_rate)))
+
+    # Cost metric: RWMH is gradient-free; each step requires exactly 1 log-density
+    # evaluation per chain (one proposal evaluated, no leapfrog integration).
+    total_log_density_evals = NUM_CHAINS * NUM_SAMPLES
 
     # ArviZ summary: R-hat, bulk/tail ESS, MCSE
     idata = az.from_dict(
         posterior={"x1": samples[:, :, 0], "x2": samples[:, :, 1]},
-        sample_stats={
-            "acceptance_rate": np.array(all_infos.acceptance_rate),
-            "n_steps": num_integration_steps,
-        },
+        sample_stats={"acceptance_rate": np.array(all_infos.acceptance_rate)},
     )
     summary = az.summary(idata, var_names=["x1", "x2"])
-    total_grad_evals = num_integration_steps.sum()
     total_bulk_ess = summary["ess_bulk"].sum()
-    ess_per_grad = total_bulk_ess / total_grad_evals
 
-    # Tree depth saturation (fraction of steps hitting the max observed tree depth)
-    max_steps = num_integration_steps.max()
-    saturation_frac = np.mean(num_integration_steps == max_steps)
-
-    # Acceptance rate
-    acceptance = np.mean(np.array(all_infos.acceptance_rate))
+    # ESS per log-density evaluation
+    ess_per_logp_eval = total_bulk_ess / total_log_density_evals
 
     print("\n=== Diagnostics ===")
-    print(f"  Mean acceptance rate:       {acceptance:.3f}")
-    print(f"  Total gradient evaluations: {int(total_grad_evals)}")
-    print(f"  Mean tree depth (steps):    {num_integration_steps.mean():.1f}  (max observed: {int(max_steps)})")
-    print(f"  Tree depth saturation:      {saturation_frac:.1%}")
+    print(f"  Mean acceptance rate:          {acceptance:.3f}")
+    print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
     print()
     true_weights = np.array(DEFAULT_WEIGHTS)
     print(f"  Mode weight recovery (empirical vs true):")
@@ -138,7 +131,7 @@ def main():
     print("  ArviZ summary (R-hat, ESS, MCSE):")
     print(summary.to_string())
     print()
-    print(f"  Bulk ESS per gradient eval: {ess_per_grad:.4f}")
+    print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
 
     # --- Save results ---
     RWMH_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -149,19 +142,16 @@ def main():
     diagnostics = {
         "sampler": "RandomWalkMetropolisHastings",
         "num_chains": NUM_CHAINS,
-        "num_warmup": NUM_WARMUP,
+        "num_warmup": NUM_BURNIN,
         "num_samples": NUM_SAMPLES,
-        "adapted_step_size": float(parameters["step_size"]),
+        "adapted_step_size": float(STEP_SIZE),
         "mean_acceptance_rate": float(acceptance),
-        "total_grad_evals": int(total_grad_evals),
-        "mean_integration_steps": float(num_integration_steps.mean()),
-        "max_integration_steps": int(max_steps),
-        "tree_depth_saturation": float(saturation_frac),
+        "total_log_density_evals": int(total_log_density_evals),
+        "bulk_ess_per_logp_eval": float(ess_per_logp_eval),
         "mode_weights": mode_weights.tolist(),
         "true_mode_weights": np.array(DEFAULT_WEIGHTS).tolist(),
         "inter_mode_transitions": transitions.tolist(),
         "stuck_chains": stuck_chains,
-        "bulk_ess_per_grad_eval": float(ess_per_grad),
         "arviz_summary": json.loads(summary.to_json()),
     }
     diag_path = RWMH_OUTPUT_DIR / "diagnostics.json"
@@ -170,7 +160,6 @@ def main():
     print(f"Saved diagnostics to {diag_path}")
 
     # --- Plots ---
-
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
 
     colors = plt.cm.tab10(np.linspace(0, 1, NUM_CHAINS))
@@ -178,7 +167,7 @@ def main():
         axes[0].scatter(samples[c, :, 0], samples[c, :, 1], alpha=0.15, s=2, color=colors[c])
     axes[0].set_xlabel("x1")
     axes[0].set_ylabel("x2")
-    axes[0].set_title(f"NUTS samples ({NUM_CHAINS} chains)")
+    axes[0].set_title(f"RWMH samples ({NUM_CHAINS} chains)")
     axes[0].set_aspect("equal")
 
     for i, label in enumerate(["x1", "x2"]):

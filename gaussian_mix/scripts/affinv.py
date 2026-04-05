@@ -23,7 +23,7 @@ from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAU
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
 NUM_BURNIN = 1000
-NUM_SAMPLES = 5000
+NUM_SAMPLES = 6000
 NUM_WALKERS = 5
 NDIM = 2
 
@@ -50,6 +50,7 @@ def main():
     # samples shape: (NUM_STEPS, NUM_WALKERS, NDIM) -> reshape to (NUM_WALKERS, NUM_SAMPLES, NDIM)
     raw = np.asarray(trace.samples.coordinates)  # (NUM_SAMPLES, NUM_WALKERS, NDIM)
     samples = raw.transpose(1, 0, 2)             # (NUM_WALKERS, NUM_SAMPLES, NDIM)
+    samples = samples[:, NUM_BURNIN:, :]         # discard burn-in
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
