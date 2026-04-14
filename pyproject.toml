@@ -16,7 +16,7 @@ dependencies = [
     "jaxns",
     "tensorflow",
     "emcee_jax @ git+https://github.com/SamMerc/emcee-jax.git",
-    "sajax @ git+https://github.com/SamMerc/sajax.git",
+    "sajax",
     "pt_jax @ git+https://github.com/lmarthur/pt-jax.git"
 ]
 
