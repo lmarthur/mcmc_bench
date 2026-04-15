@@ -20,7 +20,7 @@ used to extract a BlackJAX-compatible log-density function for sampling.
 from pathlib import Path
 
 import jax
-from sajax.core import _compute_all_phases, rotate_active_region, build_combined_model, _get_intensity_profile, compute_combined_light_curve
+from sajax.core import _compute_all_phases, rotate_active_region, build_combined_model, compute_combined_light_curve
 from sajax.planet import compute_planet_sky_positions
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -101,7 +101,7 @@ SIGMA_NOISE = 100e-6     # ~100 ppm
 # ---------------------------------------------------------------------------
 # Ground-truth spot and facula
 # ---------------------------------------------------------------------------
-TRUE_SPOT_LAT = 0.0      
+TRUE_SPOT_LAT = 5.0      
 TRUE_SPOT_LONG = 5.0      
 TRUE_SPOT_SIZE = 11.0     
 
@@ -180,7 +180,7 @@ def _call_sajax(
     P_orb: float,
     LDC_u1: float,
     LDC_u2: float,
-) -> jnp.ndarray:
+) -> dict:
     """
     Call sajax's compute_combined_light_curve and return the broadband light curve.
     Used primarily for plotting and ground-truth generation.
@@ -201,7 +201,7 @@ def _call_sajax(
         omega_peri   = arg_periapsis,
     )
 
-    result = compute_combined_light_curve(
+    return compute_combined_light_curve(
         wavelength        = WAVELENGTH,
         flux_quiet        = FLUX_QUIET,
         flux_active       = flux_active,
@@ -215,10 +215,8 @@ def _call_sajax(
         stellar_grid_size = STELLAR_GRID_SIZE,
         ve                = VE,
         ldc_mode          = "quadratic",
+        plot_map_wavelength = WAVELENGTH[0] # Ensure maps are generated for this wavelength
     )
-
-    return jnp.array(result["lc"])
-
 
 # ---------------------------------------------------------------------------
 # Synthetic observations
@@ -246,7 +244,7 @@ def generate_observations(seed: int = 0) -> np.ndarray:
             TRUE_P_ORB,
             TRUE_LDC_U1,
             TRUE_LDC_U2,
-        )
+        )["lc"]
     )
 
     rng = np.random.default_rng(seed)
@@ -430,7 +428,6 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
       - The ground-truth combined light curve and noisy observations
       - The transit component alone
       - The activity component alone
-      - A 2D marginal heatmap of log p(spot_lat, spot_long | y_obs)
     """
     log_density_fn = make_log_density()
 
@@ -451,7 +448,7 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
             TRUE_P_ORB,
             TRUE_LDC_U1,
             TRUE_LDC_U2,
-        )
+        )["lc"]
     )
     #Transit only
     lc_transit = np.array(
@@ -470,11 +467,10 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
             TRUE_P_ORB,
             TRUE_LDC_U1,
             TRUE_LDC_U2,
-        )
+        )["lc"]
     )
     #Combination
-    lc_combined = np.array(
-        _call_sajax(
+    full_result = _call_sajax(
             TIMES,
             jnp.array([TRUE_SPOT_LAT, TRUE_FACULA_LAT]),
             jnp.array([TRUE_SPOT_LONG, TRUE_FACULA_LONG]),
@@ -490,72 +486,67 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
             TRUE_LDC_U1,
             TRUE_LDC_U2,
         )
-    )
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    lc_combined = np.array(full_result['lc'])
+    star_maps = np.array(full_result["star_maps"])
 
-    # --- Combined light curve ---
-    ax = axes[0, 0]
-    ax.plot(TIMES, lc_combined, lw=1.5, label="True combined", color="steelblue")
-    ax.scatter(
-        TIMES, OBS_LIGHT_CURVE,
-        s=1, alpha=0.3, color="orange", label="Observed (+ noise)",
-    )
-    ax.set_xlabel("Time [days]")
-    ax.set_ylabel("Normalised flux")
-    ax.set_title("Combined: activity × transit")
-    ax.legend()
+    # Define snapshot indices: Ingress, Mid-transit, Egress
+    t_snap = [TRUE_T0_TRANSIT - 0.7*TRUE_T14_TRANSIT, 
+              TRUE_T0_TRANSIT, 
+              TRUE_T0_TRANSIT + 0.7*TRUE_T14_TRANSIT]
+    idx_snap = [np.argmin(np.abs(TIMES - t)) for t in t_snap]
 
-    # --- Activity only ---
-    ax = axes[0, 1]
-    ax.plot(TIMES, lc_activity, lw=1.5, color="green")
-    ax.set_xlabel("Time [days]")
-    ax.set_ylabel("Normalised flux")
-    ax.set_title("Stellar activity only (sajax)")
+    # Create figure with GridSpec
+    fig = plt.figure(figsize=(16, 10))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1, 1.2])
 
-    # --- Transit only ---
-    ax = axes[1, 0]
-    # Zoom into transit window
-    t_mid = TRUE_T0_TRANSIT
-    t_window = 3 * TRUE_T14_TRANSIT
-    mask = np.abs(TIMES - t_mid) < t_window
-    ax.plot(TIMES[mask], lc_transit[mask], lw=2, color="crimson")
-    ax.set_xlabel("Time [days]")
-    ax.set_ylabel("Normalised flux")
-    ax.set_title("Planet transit only (jaxoplanet)")
+    # --- Top Row: System Snapshots ---
+    for i, idx in enumerate(idx_snap):
+        ax = fig.add_subplot(gs[0, i])
+        # Display the map for the first (and only) wavelength bin
+        im = ax.imshow(star_maps[idx, :, :], origin='lower', cmap='inferno', extent=[-1, 1, -1, 1])
+        phase_snap = (TIMES[idx] / TRUE_P_ROT * 360.0) % 360.0    
+        ax.set_title(rf"Phase: {phase_snap:.0f}$^\circ$", fontsize=12)
+        ax.axis('off')
+        if i == 2:
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label='Intensity')
 
-    # --- Log-posterior slice: spot_lat vs spot_long ---
-    resolution = 40
-    lats = np.linspace(LAT_MIN, LAT_MAX, resolution)
-    longs = np.linspace(LONG_MIN, LONG_MAX, resolution)
-    LL, LO = np.meshgrid(lats, longs)
+    # --- Bottom Row: Light Curve and Residuals ---
+    ax_lc = fig.add_subplot(gs[1, :2])
+    ax_res = fig.add_subplot(gs[1, 2])
 
-    # Fix all other params to ground truth
-    log_p = np.zeros((resolution, resolution))
-    for i in range(resolution):
-        for j in range(resolution):
-            x = jnp.array([
-                TRUE_SPOT_LAT,TRUE_SPOT_LONG,TRUE_SPOT_SIZE,
-                FLUX_ACTIVE_SPOT[0],TRUE_FACULA_LAT,TRUE_FACULA_LONG,TRUE_FACULA_SIZE,
-                FLUX_ACTIVE_FACULA[0],TRUE_PLANET_RADIUS,TRUE_SEMI_MAJOR,TRUE_INCLINATION,
-                TRUE_ECCENTRICITY,TRUE_ARG_PERIAPSIS,TRUE_P_ORB,TRUE_LDC_U1,TRUE_LDC_U2,
-            ])
-            log_p[i, j] = log_density_fn(x)
+    # Light Curve
+    ax_lc.plot(TIMES, lc_activity - 0.002, '--', lw=2, alpha=0.8, color="green", label='Star', zorder=3)
+    ax_lc.plot(TIMES, lc_transit, '--', lw=2, alpha=0.8, color="crimson", label='Planet', zorder=3)
+    ax_lc.plot(TIMES, lc_combined, lw=3, label="Star + Planet", color="steelblue", zorder=1)
+    ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=10, color="orange", label="Observations", zorder=2)
+    
+    # Mark snapshot locations on the light curve
+    for t in t_snap:
+        ax_lc.axvline(t, color='black', alpha=0.2, linestyle=':')
 
-    ax = axes[1, 1]
-    im = ax.pcolormesh(lats, longs, log_p, shading="auto", cmap="viridis")
-    ax.scatter(
-        [TRUE_SPOT_LAT], [TRUE_SPOT_LONG],
-        color="red", s=60, zorder=5, label="True spot",
-    )
-    ax.set_xlabel("spot_lat [deg]")
-    ax.set_ylabel("spot_long [deg]")
-    ax.set_title("log p(lat, long | data) [other params fixed]")
-    ax.legend()
-    plt.colorbar(im, ax=ax, label="log p")
+    ax_lc.legend(loc='lower left', frameon=False)
+    ax_lc.set_xlabel("Time [days]")
+    ax_lc.set_ylabel("Normalised flux")
+    ax_lc.spines['top'].set_visible(False)
+    ax_lc.spines['right'].set_visible(False)
 
-    fig.tight_layout()
+    # Residuals
+    res_ppm = (OBS_LIGHT_CURVE - lc_combined) * 1e6
+    ax_res.hist(res_ppm, orientation='horizontal', histtype='stepfilled', bins=25, 
+                color='orange', alpha=0.3, edgecolor='orange', lw=2)
+    ax_res.axhline(np.std(res_ppm), color='black', linestyle='dotted', label=r'+/- 1$\sigma$')
+    ax_res.axhline(-np.std(res_ppm), color='black', linestyle='dotted')
+    ax_res.set_ylabel('Residuals [ppm]')
+    ax_res.spines['right'].set_visible(False)
+    ax_res.spines['top'].set_visible(False)
+    ax_res.spines['bottom'].set_visible(False)
+    ax_res.tick_params(bottom=False, labelbottom=False)
+    ax_res.legend(fontsize=9)
+
+    plt.tight_layout()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUTPUT_DIR / filename
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved plot to {out_path}")
+    print(f"Saved diagnostic plot with snapshots to {out_path}")
