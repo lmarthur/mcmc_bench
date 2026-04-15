@@ -29,13 +29,14 @@ NUM_WALKERS = 32
 NDIM = 2
 
 
-def main():
-    init_key, state_key, sample_key = jax.random.split(jax.random.PRNGKey(0), 3)
+def main(seed=0, save_outputs=True):
+    init_key, state_key, sample_key = jax.random.split(jax.random.PRNGKey(seed), 3)
+    _print = print if save_outputs else lambda *a, **kw: None
 
     # --- Model ---
     log_density_fn = make_log_density()
-    print("Plotting model...")
-    plot_model()
+    if save_outputs:
+        plot_model()
 
     t0 = time.perf_counter()
 
@@ -47,8 +48,11 @@ def main():
     state = sampler.init(state_key, coords)
 
     # --- Run chains in parallel ---
-    print(f"Sampling ({NUM_SAMPLES} steps, {NUM_WALKERS} walkers)...")
-    trace = sampler.sample_parallel(sample_key, state, NUM_SAMPLES)
+    _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_WALKERS} walkers)...")
+    with warnings.catch_warnings():
+        if not save_outputs:
+            warnings.simplefilter("ignore")
+        trace = sampler.sample_parallel(sample_key, state, NUM_SAMPLES, progress=save_outputs)
 
     # samples shape: (NUM_STEPS, NUM_WALKERS, NDIM) -> reshape to (NUM_WALKERS, NUM_SAMPLES, NDIM)
     raw = np.asarray(trace.samples.coordinates)  # (NUM_SAMPLES, NUM_WALKERS, NDIM)
@@ -95,35 +99,30 @@ def main():
     # ESS per log-density evaluation (analogous to NUTS's ESS per grad eval)
     ess_per_logp_eval = total_bulk_ess / total_log_density_evals
 
-    print("\n=== Diagnostics ===")
-    print(f"  Mean acceptance rate:          {acceptance:.3f}")
-    print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
-    print()
+    _print("\n=== Diagnostics ===")
+    _print(f"  Mean acceptance rate:          {acceptance:.3f}")
+    _print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
+    _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
-    print(f"  Mode weight recovery (empirical vs true):")
+    _print(f"  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
-        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
-    print()
-    print(f"  Inter-mode transitions per walker: {transitions.tolist()}")
+        _print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
+    _print()
+    _print(f"  Inter-mode transitions per walker: {transitions.tolist()}")
     if stuck_chains:
-        print(f"  WARNING: stuck walkers (never left one mode): {stuck_chains}")
+        _print(f"  WARNING: stuck walkers (never left one mode): {stuck_chains}")
     else:
-        print(f"  No stuck walkers detected.")
-    print()
-    print("  ArviZ summary (R-hat, ESS, MCSE):")
-    print(summary.to_string())
-    print()
-    print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
+        _print(f"  No stuck walkers detected.")
+    _print()
+    _print("  ArviZ summary (R-hat, ESS, MCSE):")
+    _print(summary.to_string())
+    _print()
+    _print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
 
     wall_time_s = time.perf_counter() - t0
-    print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
 
-    # --- Save results ---
-    AFFINV_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    idata.to_netcdf(str(AFFINV_OUTPUT_DIR / "idata.nc"))
-    print(f"Saved InferenceData to {AFFINV_OUTPUT_DIR / 'idata.nc'}")
-
+    # --- Results ---
     diagnostics = {
         "sampler": "AffineInvariantMCMC",
         "num_walkers": NUM_WALKERS,
@@ -139,10 +138,15 @@ def main():
         "stuck_chains": stuck_chains,
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = AFFINV_OUTPUT_DIR / "diagnostics.json"
-    with open(diag_path, "w") as f:
-        json.dump(diagnostics, f, indent=2)
-    print(f"Saved diagnostics to {diag_path}")
+    if save_outputs:
+        AFFINV_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(AFFINV_OUTPUT_DIR / "idata.nc"))
+        diag_path = AFFINV_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if not save_outputs:
+        return diagnostics
 
     # --- Plots ---
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
@@ -166,7 +170,7 @@ def main():
     out_path = AFFINV_OUTPUT_DIR / "samples.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved samples plot to {out_path}")
+    _print(f"Saved samples plot to {out_path}")
 
     # --- Corner plot ---
     corner_axes = az.plot_pair(
@@ -182,7 +186,8 @@ def main():
     corner_path = AFFINV_OUTPUT_DIR / "corner.png"
     corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
     plt.close(corner_fig)
-    print(f"Saved corner plot to {corner_path}")
+    _print(f"Saved corner plot to {corner_path}")
+    return diagnostics
 
 
 if __name__ == "__main__":

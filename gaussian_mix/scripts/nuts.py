@@ -40,30 +40,31 @@ def inference_loop(rng_key, kernel, initial_state, num_samples):
     return states, infos
 
 
-def main():
-    rng_key = jax.random.PRNGKey(0)
+def main(seed=0, save_outputs=True):
+    rng_key = jax.random.PRNGKey(seed)
+    _print = print if save_outputs else lambda *a, **kw: None
 
     # --- Model ---
     log_density_fn = make_log_density()
-    print("Plotting model...")
-    plot_model()
+    if save_outputs:
+        plot_model()
 
     t0 = time.perf_counter()
 
     # --- Warmup: adapt one chain, share parameters across all chains ---
-    print(f"Running warmup ({NUM_WARMUP} steps)...")
+    _print(f"Running warmup ({NUM_WARMUP} steps)...")
     if NUM_WARMUP > 0:
         warmup_init_key, warmup_key, run_key = jax.random.split(rng_key, 3)
         warmup = blackjax.window_adaptation(blackjax.nuts, log_density_fn)
         warmup_start = jax.random.uniform(warmup_init_key, shape=(2,), minval=-10.0, maxval=10.0)
         (_, parameters), warmup_infos = warmup.run(warmup_key, warmup_start, num_steps=NUM_WARMUP)
         warmup_grad_evals = int(warmup_infos.num_integration_steps.sum())
-        print(f"  Adapted step size: {parameters['step_size']:.4f}")
+        _print(f"  Adapted step size: {parameters['step_size']:.4f}")
     else:
         run_key = rng_key
         parameters = {"step_size": NUTS_DEFAULT_STEP_SIZE, "inverse_mass_matrix": jnp.ones(2)}
         warmup_grad_evals = 0
-        print(f"  Warmup skipped: using default step size {NUTS_DEFAULT_STEP_SIZE}")
+        _print(f"  Warmup skipped: using default step size {NUTS_DEFAULT_STEP_SIZE}")
 
     # --- Initialize chains from random starting positions ---
     init_key, sample_key = jax.random.split(run_key)
@@ -74,7 +75,7 @@ def main():
     initial_states = init_fn(initial_positions)
 
     # --- Run chains in parallel with vmap ---
-    print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
+    _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
     chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
 
     @jax.vmap
@@ -129,37 +130,32 @@ def main():
     # Acceptance rate
     acceptance = np.mean(np.array(all_infos.acceptance_rate))
 
-    print("\n=== Diagnostics ===")
-    print(f"  Mean acceptance rate:       {acceptance:.3f}")
-    print(f"  Total gradient evaluations: {int(total_grad_evals)}")
-    print(f"  Mean tree depth (steps):    {num_integration_steps.mean():.1f}  (max observed: {int(max_steps)})")
-    print(f"  Tree depth saturation:      {saturation_frac:.1%}")
-    print()
+    _print("\n=== Diagnostics ===")
+    _print(f"  Mean acceptance rate:       {acceptance:.3f}")
+    _print(f"  Total gradient evaluations: {int(total_grad_evals)}")
+    _print(f"  Mean tree depth (steps):    {num_integration_steps.mean():.1f}  (max observed: {int(max_steps)})")
+    _print(f"  Tree depth saturation:      {saturation_frac:.1%}")
+    _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
-    print(f"  Mode weight recovery (empirical vs true):")
+    _print(f"  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
-        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
-    print()
-    print(f"  Inter-mode transitions per chain: {transitions.tolist()}")
+        _print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
+    _print()
+    _print(f"  Inter-mode transitions per chain: {transitions.tolist()}")
     if stuck_chains:
-        print(f"  WARNING: stuck chains (never left one mode): {stuck_chains}")
+        _print(f"  WARNING: stuck chains (never left one mode): {stuck_chains}")
     else:
-        print(f"  No stuck chains detected.")
-    print()
-    print("  ArviZ summary (R-hat, ESS, MCSE):")
-    print(summary.to_string())
-    print()
-    print(f"  Bulk ESS per gradient eval: {ess_per_grad:.4f}")
+        _print(f"  No stuck chains detected.")
+    _print()
+    _print("  ArviZ summary (R-hat, ESS, MCSE):")
+    _print(summary.to_string())
+    _print()
+    _print(f"  Bulk ESS per gradient eval: {ess_per_grad:.4f}")
 
     wall_time_s = time.perf_counter() - t0
-    print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
 
-    # --- Save results ---
-    NUTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    idata.to_netcdf(str(NUTS_OUTPUT_DIR / "idata.nc"))
-    print(f"Saved InferenceData to {NUTS_OUTPUT_DIR / 'idata.nc'}")
-
+    # --- Results ---
     diagnostics = {
         "sampler": "NUTS",
         "num_chains": NUM_CHAINS,
@@ -180,10 +176,15 @@ def main():
         "bulk_ess_per_grad_eval": float(ess_per_grad),
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = NUTS_OUTPUT_DIR / "diagnostics.json"
-    with open(diag_path, "w") as f:
-        json.dump(diagnostics, f, indent=2)
-    print(f"Saved diagnostics to {diag_path}")
+    if save_outputs:
+        NUTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(NUTS_OUTPUT_DIR / "idata.nc"))
+        diag_path = NUTS_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if not save_outputs:
+        return diagnostics
 
     # --- Plots ---
 
@@ -208,7 +209,7 @@ def main():
     out_path = NUTS_OUTPUT_DIR / "samples.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved samples plot to {out_path}")
+    _print(f"Saved samples plot to {out_path}")
 
     # --- Corner plot ---
     corner_axes = az.plot_pair(
@@ -224,7 +225,8 @@ def main():
     corner_path = NUTS_OUTPUT_DIR / "corner.png"
     corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
     plt.close(corner_fig)
-    print(f"Saved corner plot to {corner_path}")
+    _print(f"Saved corner plot to {corner_path}")
+    return diagnostics
 
 
 if __name__ == "__main__":

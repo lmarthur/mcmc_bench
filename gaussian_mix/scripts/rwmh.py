@@ -26,7 +26,7 @@ RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 NUM_BURNIN = 0
 NUM_SAMPLES = 10000
 NUM_CHAINS = 10
-STEP_SIZE = 0.5
+STEP_SIZE = 1.68  # Roberts, Gelman & Gilks (1997): 2.38/sqrt(d) for d=2, targets ~23.4% acceptance
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
@@ -40,13 +40,14 @@ def inference_loop(rng_key, kernel, initial_state, num_samples):
     return states, infos
 
 
-def main():
-    init_key, burnin_key, sample_key = jax.random.split(jax.random.PRNGKey(0), 3)
+def main(seed=0, save_outputs=True):
+    init_key, burnin_key, sample_key = jax.random.split(jax.random.PRNGKey(seed), 3)
+    _print = print if save_outputs else lambda *a, **kw: None
 
     # --- Model ---
     log_density_fn = make_log_density()
-    print("Plotting model...")
-    plot_model()
+    if save_outputs:
+        plot_model()
 
     t0 = time.perf_counter()
 
@@ -63,7 +64,7 @@ def main():
 
     # --- Burn-in (discard, just to move chains away from starting positions) ---
     if NUM_BURNIN > 0:
-        print(f"Running burn-in ({NUM_BURNIN} steps)...")
+        _print(f"Running burn-in ({NUM_BURNIN} steps)...")
         burnin_keys = jax.random.split(burnin_key, NUM_CHAINS)
         burnin_states, _ = run_chain(burnin_keys, initial_states)
         post_burnin_states = jax.tree.map(lambda x: x[:, -1], burnin_states)
@@ -71,7 +72,7 @@ def main():
         post_burnin_states = initial_states
 
     # --- Sample ---
-    print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
+    _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
 
     @jax.vmap
     def run_sample_chain(rng_key, initial_state):
@@ -122,35 +123,30 @@ def main():
     # ESS per log-density evaluation
     ess_per_logp_eval = total_bulk_ess / total_log_density_evals
 
-    print("\n=== Diagnostics ===")
-    print(f"  Mean acceptance rate:          {acceptance:.3f}")
-    print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
-    print()
+    _print("\n=== Diagnostics ===")
+    _print(f"  Mean acceptance rate:          {acceptance:.3f}")
+    _print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
+    _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
-    print(f"  Mode weight recovery (empirical vs true):")
+    _print(f"  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
-        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
-    print()
-    print(f"  Inter-mode transitions per chain: {transitions.tolist()}")
+        _print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
+    _print()
+    _print(f"  Inter-mode transitions per chain: {transitions.tolist()}")
     if stuck_chains:
-        print(f"  WARNING: stuck chains (never left one mode): {stuck_chains}")
+        _print(f"  WARNING: stuck chains (never left one mode): {stuck_chains}")
     else:
-        print(f"  No stuck chains detected.")
-    print()
-    print("  ArviZ summary (R-hat, ESS, MCSE):")
-    print(summary.to_string())
-    print()
-    print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
+        _print(f"  No stuck chains detected.")
+    _print()
+    _print("  ArviZ summary (R-hat, ESS, MCSE):")
+    _print(summary.to_string())
+    _print()
+    _print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
 
     wall_time_s = time.perf_counter() - t0
-    print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
 
-    # --- Save results ---
-    RWMH_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    idata.to_netcdf(str(RWMH_OUTPUT_DIR / "idata.nc"))
-    print(f"Saved InferenceData to {RWMH_OUTPUT_DIR / 'idata.nc'}")
-
+    # --- Results ---
     diagnostics = {
         "sampler": "RandomWalkMetropolisHastings",
         "num_chains": NUM_CHAINS,
@@ -167,10 +163,15 @@ def main():
         "stuck_chains": stuck_chains,
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = RWMH_OUTPUT_DIR / "diagnostics.json"
-    with open(diag_path, "w") as f:
-        json.dump(diagnostics, f, indent=2)
-    print(f"Saved diagnostics to {diag_path}")
+    if save_outputs:
+        RWMH_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(RWMH_OUTPUT_DIR / "idata.nc"))
+        diag_path = RWMH_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if not save_outputs:
+        return diagnostics
 
     # --- Plots ---
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
@@ -194,7 +195,7 @@ def main():
     out_path = RWMH_OUTPUT_DIR / "samples.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved samples plot to {out_path}")
+    _print(f"Saved samples plot to {out_path}")
 
     # --- Corner plot ---
     corner_axes = az.plot_pair(
@@ -210,7 +211,8 @@ def main():
     corner_path = RWMH_OUTPUT_DIR / "corner.png"
     corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
     plt.close(corner_fig)
-    print(f"Saved corner plot to {corner_path}")
+    _print(f"Saved corner plot to {corner_path}")
+    return diagnostics
 
 
 if __name__ == "__main__":

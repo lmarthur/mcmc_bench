@@ -9,6 +9,7 @@ are drawn from the prior and at lambda=1 they approximate the target.
 import json
 import sys
 import time
+import logging
 import warnings
 from pathlib import Path
 
@@ -37,13 +38,14 @@ SIGMA_PROPOSAL = 1.0  # RMH proposal std dev — roughly one mode width
 MAX_STEPS = 500      # safety cap on SMC iterations
 
 
-def main():
-    rng_key = jax.random.PRNGKey(0)
+def main(seed=0, save_outputs=True):
+    rng_key = jax.random.PRNGKey(seed)
+    _print = print if save_outputs else lambda *a, **kw: None
 
     # --- Model ---
     log_density_fn = make_log_density()
-    print("Plotting model...")
-    plot_model()
+    if save_outputs:
+        plot_model()
 
     # --- Prior / likelihood split for tempering ---
     # At lambda=0: sample from logprior (broad Gaussian)
@@ -92,7 +94,7 @@ def main():
     all_log_nc = []
     num_steps = 0
 
-    print(f"Running adaptive tempered SMC ({NUM_PARTICLES} particles)...")
+    _print(f"Running adaptive tempered SMC ({NUM_PARTICLES} particles)...")
     while state.tempering_param < 1.0 and num_steps < MAX_STEPS:
         loop_key, subkey = jax.random.split(loop_key)
         state, info = step_fn(subkey, state)
@@ -102,12 +104,12 @@ def main():
         all_log_nc.append(lnc)
         num_steps += 1
         if num_steps % 10 == 0 or lam >= 1.0:
-            print(f"  Step {num_steps:3d}: lambda={lam:.4f}")
+            _print(f"  Step {num_steps:3d}: lambda={lam:.4f}")
 
     if num_steps >= MAX_STEPS:
-        print(f"  WARNING: hit MAX_STEPS={MAX_STEPS} before lambda reached 1.")
+        _print(f"  WARNING: hit MAX_STEPS={MAX_STEPS} before lambda reached 1.")
     else:
-        print(f"  Completed in {num_steps} SMC steps.")
+        _print(f"  Completed in {num_steps} SMC steps.")
 
     wall_time_s = time.perf_counter() - t0
 
@@ -133,34 +135,34 @@ def main():
     assignments = np.argmin(dists_to_modes, axis=-1)
     mode_weights = np.bincount(assignments, weights=weights, minlength=num_modes)
 
-    print("\n=== Diagnostics ===")
-    print(f"  SMC steps:                {num_steps}")
-    print(f"  Final lambda:             {float(state.tempering_param):.6f}")
-    print(f"  Log normalizing constant: {log_nc_total:.3f}")
-    print(f"  Final ESS:                {final_ess:.1f} / {NUM_PARTICLES}")
-    print(f"  Total log-density evals:  {int(total_log_density_evals)}")
-    print(f"  Wall-clock time:          {wall_time_s:.2f}s")
-    print()
+    _print("\n=== Diagnostics ===")
+    _print(f"  SMC steps:                {num_steps}")
+    _print(f"  Final lambda:             {float(state.tempering_param):.6f}")
+    _print(f"  Log normalizing constant: {log_nc_total:.3f}")
+    _print(f"  Final ESS:                {final_ess:.1f} / {NUM_PARTICLES}")
+    _print(f"  Total log-density evals:  {int(total_log_density_evals)}")
+    _print(f"  Wall-clock time:          {wall_time_s:.2f}s")
+    _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
-    print("  Mode weight recovery (empirical vs true):")
+    _print("  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
-        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
+        _print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
 
     # ArviZ summary — treat the (weighted, post-resampling) particles as one chain
+    _az_log = logging.getLogger("arviz")
+    _az_prev = _az_log.level
+    if not save_outputs:
+        _az_log.setLevel(logging.ERROR)
     idata = az.from_dict(
         posterior={"x1": particles[:, 0][None, :], "x2": particles[:, 1][None, :]}
     )
     summary = az.summary(idata, var_names=["x1", "x2"])
-    print()
-    print("  ArviZ summary (R-hat, ESS, MCSE):")
-    print(summary.to_string())
+    _az_log.setLevel(_az_prev)
+    _print()
+    _print("  ArviZ summary (R-hat, ESS, MCSE):")
+    _print(summary.to_string())
 
-    # --- Save results ---
-    SMC_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    idata.to_netcdf(str(SMC_OUTPUT_DIR / "idata.nc"))
-    print(f"Saved InferenceData to {SMC_OUTPUT_DIR / 'idata.nc'}")
-
+    # --- Results ---
     diagnostics = {
         "sampler": "AdaptiveTemperedSMC",
         "num_particles": NUM_PARTICLES,
@@ -181,10 +183,15 @@ def main():
         "true_mode_weights": np.array(DEFAULT_WEIGHTS).tolist(),
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = SMC_OUTPUT_DIR / "diagnostics.json"
-    with open(diag_path, "w") as f:
-        json.dump(diagnostics, f, indent=2)
-    print(f"Saved diagnostics to {diag_path}")
+    if save_outputs:
+        SMC_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(SMC_OUTPUT_DIR / "idata.nc"))
+        diag_path = SMC_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if not save_outputs:
+        return diagnostics
 
     # --- Plots ---
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
@@ -209,7 +216,7 @@ def main():
     out_path = SMC_OUTPUT_DIR / "samples.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved samples plot to {out_path}")
+    _print(f"Saved samples plot to {out_path}")
 
     # --- Corner plot ---
     corner_axes = az.plot_pair(
@@ -225,7 +232,8 @@ def main():
     corner_path = SMC_OUTPUT_DIR / "corner.png"
     corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
     plt.close(corner_fig)
-    print(f"Saved corner plot to {corner_path}")
+    _print(f"Saved corner plot to {corner_path}")
+    return diagnostics
 
 
 if __name__ == "__main__":

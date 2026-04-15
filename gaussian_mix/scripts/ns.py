@@ -5,6 +5,7 @@ Run Nested Sampling (JAXNS) on the 2D Gaussian mixture model and save trace plot
 import json
 import sys
 import time
+import logging
 import warnings
 from pathlib import Path
 
@@ -37,13 +38,14 @@ NUM_POSTERIOR_DRAWS = 5000 # Number of uniformly-weighted posterior draws to res
 NUM_LIVE_POINTS = 500      # Number of live points for nested sampling — more points gives better accuracy but higher cost.
 
 
-def main():
-    rng_key = jax.random.PRNGKey(0)
+def main(seed=0, save_outputs=True):
+    rng_key = jax.random.PRNGKey(seed)
     resample_key, run_key = jax.random.split(rng_key)
+    _print = print if save_outputs else lambda *a, **kw: None
 
     log_density_fn = make_log_density()
-    print("Plotting model...")
-    plot_model()
+    if save_outputs:
+        plot_model()
 
     # --- Define JAXNS prior and likelihood ---
     # JAXNS Prior uses a generator (yield) pattern.
@@ -62,18 +64,19 @@ def main():
         return log_density_fn(x)
 
     model = jaxns.Model(prior_model=prior_model, log_likelihood=log_likelihood)
-    model.sanity_check(jax.random.PRNGKey(1), S=100)
+    if save_outputs:
+        model.sanity_check(jax.random.PRNGKey(1), S=100)
 
     # --- Run nested sampler ---
     ns = jaxns.NestedSampler(model=model,max_samples=MAX_SAMPLES,num_live_points=NUM_LIVE_POINTS)#,difficult_model=True)
 
-    print("Running nested sampling...")
+    _print("Running nested sampling...")
     t0 = time.perf_counter()
     termination_reason, state = jax.jit(ns)(run_key)
     results = ns.to_results(termination_reason=termination_reason, state=state)
     wall_time_s = time.perf_counter() - t0
 
-    print(f"\nTermination reason: {termination_reason}")
+    _print(f"\nTermination reason: {termination_reason}")
 
     # --- Resample to uniform posterior draws for diagnostics ---
     # results.samples is a dict {"x1": ..., "x2": ...} of weighted dead points.
@@ -114,34 +117,34 @@ def main():
     log_z_uncert = float(results.log_Z_uncert)
 
     # ArviZ summary on the resampled draws (single pseudo-chain)
+    _az_log = logging.getLogger("arviz")
+    _az_prev = _az_log.level
+    if not save_outputs:
+        _az_log.setLevel(logging.ERROR)
     idata = az.from_dict(
         posterior={"x1": samples_2d[:, :, 0], "x2": samples_2d[:, :, 1]}
     )
     summary = az.summary(idata, var_names=["x1", "x2"])
+    _az_log.setLevel(_az_prev)
 
-    print("\n=== Diagnostics ===")
-    print(f"  log Z (evidence):              {log_z:.3f} ± {log_z_uncert:.3f}")
-    print(f"  JAXNS ESS (Kish estimate):     {jaxns_ess:.1f}")
-    print(f"  Total likelihood evaluations:  {total_likelihood_evals}")
-    print(f"  Likelihood evals / sample:     {results.total_num_likelihood_evaluations / max(1, int(results.total_num_samples)):.1f}")
-    print(f"  ESS per likelihood eval:       {ess_per_likelihood_eval:.4f}")
-    print(f"  Wall-clock time:               {wall_time_s:.2f}s")
-    print()
+    _print("\n=== Diagnostics ===")
+    _print(f"  log Z (evidence):              {log_z:.3f} ± {log_z_uncert:.3f}")
+    _print(f"  JAXNS ESS (Kish estimate):     {jaxns_ess:.1f}")
+    _print(f"  Total likelihood evaluations:  {total_likelihood_evals}")
+    _print(f"  Likelihood evals / sample:     {results.total_num_likelihood_evaluations / max(1, int(results.total_num_samples)):.1f}")
+    _print(f"  ESS per likelihood eval:       {ess_per_likelihood_eval:.4f}")
+    _print(f"  Wall-clock time:               {wall_time_s:.2f}s")
+    _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
-    print(f"  Mode weight recovery (empirical vs true):")
+    _print(f"  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
-        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
-    print()
+        _print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
+    _print()
     # Note: R-hat is 1.0 by construction (single chain) — only ESS/MCSE are meaningful here
-    print("  ArviZ summary (ESS, MCSE — R-hat is trivially 1.0 for a single chain):")
-    print(summary.to_string())
+    _print("  ArviZ summary (ESS, MCSE — R-hat is trivially 1.0 for a single chain):")
+    _print(summary.to_string())
 
-    # --- Save results ---
-    NS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    idata.to_netcdf(str(NS_OUTPUT_DIR / "idata.nc"))
-    print(f"\nSaved InferenceData to {NS_OUTPUT_DIR / 'idata.nc'}")
-
+    # --- Results ---
     diagnostics = {
         "sampler": "NestedSampling_JAXNS",
         "wall_time_s": wall_time_s,
@@ -160,10 +163,15 @@ def main():
         "true_mode_weights": np.array(DEFAULT_WEIGHTS).tolist(),
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = NS_OUTPUT_DIR / "diagnostics.json"
-    with open(diag_path, "w") as f:
-        json.dump(diagnostics, f, indent=2)
-    print(f"Saved diagnostics to {diag_path}")
+    if save_outputs:
+        NS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(NS_OUTPUT_DIR / "idata.nc"))
+        diag_path = NS_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if not save_outputs:
+        return diagnostics
 
     # --- Plots ---
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
@@ -186,7 +194,7 @@ def main():
     out_path = NS_OUTPUT_DIR / "samples.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved samples plot to {out_path}")
+    _print(f"Saved samples plot to {out_path}")
 
     # --- Corner plot ---
     corner_axes = az.plot_pair(
@@ -202,7 +210,8 @@ def main():
     corner_path = NS_OUTPUT_DIR / "corner.png"
     corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
     plt.close(corner_fig)
-    print(f"Saved corner plot to {corner_path}")
+    _print(f"Saved corner plot to {corner_path}")
+    return diagnostics
 
 if __name__ == "__main__":
     main()

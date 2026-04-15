@@ -8,6 +8,7 @@ non-reversible and achieves a round-trip rate independent of the number of chain
 import json
 import sys
 import time
+import logging
 import warnings
 from pathlib import Path
 
@@ -84,19 +85,19 @@ def rwmh_kernel_generator(log_p, step_size):
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
+def main(seed=0, save_outputs=True):
     kernel_type = KERNEL
 
-    init_key, sample_key = jax.random.split(jax.random.PRNGKey(0))
+    init_key, sample_key = jax.random.split(jax.random.PRNGKey(seed))
+    _print = print if save_outputs else lambda *a, **kw: None
 
     # --- Model ---
     log_density_fn = make_log_density()
-    print("Plotting model...")
-    plot_model()
+    if save_outputs:
+        plot_model()
 
     # --- Temperature schedule ---
     betas = pt_jax.annealing.annealing_exponential(NUM_CHAINS)
-    print(f"Temperature schedule (betas): {np.array(betas).round(4).tolist()}")
 
     # --- Build kernels ---
     step_sizes = jnp.linspace(STEP_SIZE_HOT, STEP_SIZE_COLD, NUM_CHAINS)
@@ -118,7 +119,7 @@ def main():
     x0 = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=-10.0, maxval=10.0)
 
     # --- Run DEO sampling loop ---
-    print(f"Running DEO ({kernel_type.upper()} local kernel, {NUM_CHAINS} chains, "
+    _print(f"Running DEO ({kernel_type.upper()} local kernel, {NUM_CHAINS} chains, "
           f"{NUM_SAMPLES} samples, {NUM_WARMUP} warmup)...")
     t0 = time.perf_counter()
     samples, rejection_rates = pt_jax.swap.deo_sampling_loop(
@@ -167,44 +168,44 @@ def main():
         cost_label = "log_density_evals"
 
     # ArviZ summary on cold chain (treated as a single chain)
+    _az_log = logging.getLogger("arviz")
+    _az_prev = _az_log.level
+    if not save_outputs:
+        _az_log.setLevel(logging.ERROR)
     idata = az.from_dict(
         posterior={"x1": cold_samples[None, :, 0], "x2": cold_samples[None, :, 1]},
     )
     summary = az.summary(idata, var_names=["x1", "x2"])
+    _az_log.setLevel(_az_prev)
     total_bulk_ess = float(summary["ess_bulk"].sum())
     ess_per_cost = total_bulk_ess / total_cost
 
-    print("\n=== Diagnostics ===")
-    print(f"  Kernel:       {kernel_type.upper()}")
-    print(f"  Total {cost_label}: {int(total_cost)}")
-    print()
+    _print("\n=== Diagnostics ===")
+    _print(f"  Kernel:       {kernel_type.upper()}")
+    _print(f"  Total {cost_label}: {int(total_cost)}")
+    _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
-    print("  Mode weight recovery (empirical vs true):")
+    _print("  Mode weight recovery (empirical vs true):")
     for k, (w, tw) in enumerate(zip(mode_weights, true_weights)):
-        print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
-    print()
-    print(f"  Inter-mode transitions (cold chain): {transitions}")
+        _print(f"    Mode {k}: {w:.3f}  (true: {tw:.3f})")
+    _print()
+    _print(f"  Inter-mode transitions (cold chain): {transitions}")
     if stuck:
-        print("  WARNING: cold chain never left one mode.")
+        _print("  WARNING: cold chain never left one mode.")
     else:
-        print("  Cold chain not stuck.")
-    print()
-    print("  Mean per-pair swap rejection rates:")
+        _print("  Cold chain not stuck.")
+    _print()
+    _print("  Mean per-pair swap rejection rates:")
     for i, r in enumerate(mean_swap_rejection):
-        print(f"    chain {i} <-> {i+1}  (beta {betas[i]:.4f} <-> {betas[i+1]:.4f}): {r:.3f}")
-    print()
-    print("  ArviZ summary (R-hat, ESS, MCSE):")
-    print(summary.to_string())
-    print()
-    print(f"  Bulk ESS per {cost_label.replace('_', '-')}: {ess_per_cost:.4f}")
-    print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+        _print(f"    chain {i} <-> {i+1}  (beta {betas[i]:.4f} <-> {betas[i+1]:.4f}): {r:.3f}")
+    _print()
+    _print("  ArviZ summary (R-hat, ESS, MCSE):")
+    _print(summary.to_string())
+    _print()
+    _print(f"  Bulk ESS per {cost_label.replace('_', '-')}: {ess_per_cost:.4f}")
+    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
 
-    # --- Save results ---
-    DEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    idata.to_netcdf(str(DEO_OUTPUT_DIR / "idata.nc"))
-    print(f"\nSaved InferenceData to {DEO_OUTPUT_DIR / 'idata.nc'}")
-
+    # --- Results ---
     diagnostics = {
         "sampler": "DEO_ParallelTempering",
         "wall_time_s": wall_time_s,
@@ -223,10 +224,15 @@ def main():
         "cold_chain_stuck": bool(stuck),
         "arviz_summary": json.loads(summary.to_json()),
     }
-    diag_path = DEO_OUTPUT_DIR / "diagnostics.json"
-    with open(diag_path, "w") as f:
-        json.dump(diagnostics, f, indent=2)
-    print(f"Saved diagnostics to {diag_path}")
+    if save_outputs:
+        DEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(DEO_OUTPUT_DIR / "idata.nc"))
+        diag_path = DEO_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+
+    if not save_outputs:
+        return diagnostics
 
     # --- Plots ---
 
@@ -258,7 +264,7 @@ def main():
     samples_path = DEO_OUTPUT_DIR / "samples.png"
     fig.savefig(samples_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved samples plot to {samples_path}")
+    _print(f"Saved samples plot to {samples_path}")
 
     # 2. Corner plot (cold chain)
     corner_axes = az.plot_pair(
@@ -274,7 +280,7 @@ def main():
     corner_path = DEO_OUTPUT_DIR / "corner.png"
     corner_fig.savefig(corner_path, dpi=150, bbox_inches="tight")
     plt.close(corner_fig)
-    print(f"Saved corner plot to {corner_path}")
+    _print(f"Saved corner plot to {corner_path}")
 
     # 3. Per-pair swap rejection rates
     pair_labels = [f"{betas[i]:.3f}↔{betas[i+1]:.3f}" for i in range(NUM_CHAINS - 1)]
@@ -290,7 +296,8 @@ def main():
     swap_path = DEO_OUTPUT_DIR / "swap_rates.png"
     fig.savefig(swap_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved swap rates plot to {swap_path}")
+    _print(f"Saved swap rates plot to {swap_path}")
+    return diagnostics
 
 
 if __name__ == "__main__":
