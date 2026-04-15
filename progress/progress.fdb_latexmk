@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex progress"] 1776172320.51898 "progress.aux" "progress.bbl" "progress" 1776172320.69944 0
+["bibtex progress"] 1776269415.41059 "progress.aux" "progress.bbl" "progress" 1776269421.87474 0
   "./refs.bib" 1776096245.17324 4513 09599c6d55f95dad778862e850a6c448 ""
-  "/usr/share/texmf-dist/bibtex/bst/base/plain.bst" 1772820570 20613 bd3fbfa9f64872b81ac57a0dd2ed855f ""
-  "progress.aux" 1776172320.66159 2005 9c7a750d41492ba0cbc2647c97827652 "pdflatex"
+  "/usr/share/texmf-dist/bibtex/bst/base/unsrt.bst" 1772820570 18030 1376b4b231b50c66211e47e42eda2875 ""
+  "progress.aux" 1776269421.81626 3710 bc88535783d86ebfb24424b0934fdc74 "pdflatex"
   (generated)
   "progress.bbl"
   "progress.blg"
   (rewritten before read)
-["pdflatex"] 1776172320.53183 "progress.tex" "progress.pdf" "progress" 1776172320.69963 0
+["pdflatex"] 1776269421.64067 "progress.tex" "progress.pdf" "progress" 1776269421.87488 0
   "/usr/share/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1772820570 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/share/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1772820570 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
   "/usr/share/texmf-dist/fonts/tfm/public/cm/cmbx10.tfm" 1772820570 1328 c834bbb027764024c09d3d2bf908b5f0 ""
@@ -28,6 +28,7 @@
   "/usr/share/texmf-dist/fonts/tfm/public/cm/cmsy9.tfm" 1772820570 1116 25a7bf822c58caf309a702ef79f4afbb ""
   "/usr/share/texmf-dist/fonts/tfm/public/cm/cmti10.tfm" 1772820570 1480 aa8e34af0eb6a2941b776984cf1dfdc4 ""
   "/usr/share/texmf-dist/fonts/tfm/public/cm/cmtt10.tfm" 1772820570 768 1321e9409b4137d6fb428ac9dc956269 ""
+  "/usr/share/texmf-dist/fonts/tfm/public/cm/cmtt8.tfm" 1772820570 768 d7b9a2629a0c353102ad947dc9221d49 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb" 1772820570 34811 78b52f49e893bcba91bd7581cdc144c0 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb" 1772820570 32080 340ef9bf63678554ee606688e7b5339d ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx9.pfb" 1772820570 32298 c6d25bb16d1eac01ebdc6d7084126a1e ""
@@ -36,10 +37,14 @@
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb" 1772820570 35752 024fb6c41858982481f6968b5fc26508 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb" 1772820570 32722 d7379af29a190c3f453aba36302ff5a9 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb" 1772820570 32362 179c33bbf43f19adbb3825bb4e36e57a ""
+  "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb" 1772820570 32734 69e00a6b65cedb993666e42eedb3d48f ""
+  "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb" 1772820570 32762 224316ccc9ad3ca0423a14971cfa7fc1 ""
+  "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb" 1772820570 32726 0a1aea6fcd6468ee2cf64d891f5c43c8 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb" 1772820570 33993 9b89b85fd2d9df0482bd47194d1d3bf3 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1772820570 32569 5e5ddc8df908dea60932f3c484a54c0d ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb" 1772820570 37944 359e864bd06cde3b1cf57bb20757fb06 ""
   "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb" 1772820570 31099 c85edf1dd5b9e826d67c9c7293b6786c ""
+  "/usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt8.pfb" 1772820570 24287 6b803fa9eb1ddff9112e00519b09dd9e ""
   "/usr/share/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb" 1772820570 138258 6525c253f16cededa14c7fd0da7f67b2 ""
   "/usr/share/texmf-dist/tex/context/base/mkii/supp-pdf.mkii" 1772820570 71627 94eb9990bed73c364d7f53f960cc8c5b ""
   "/usr/share/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty" 1772820570 40635 c40361e206be584d448876bba8a64a3b ""
@@ -86,10 +91,10 @@
   "/usr/share/texmf-dist/web2c/texmf.cnf" 1772820570 43569 fd570f2fa160877d211e859f687312ba ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1773096089 325717 59a65e600f662ceace641c3ea8b5d4af ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1773096082 2328184 2f8c651352fb2fd1464e416a798e7976 ""
-  "progress.aux" 1776172320.66159 2005 9c7a750d41492ba0cbc2647c97827652 "pdflatex"
-  "progress.bbl" 1776172320.5291 2494 423c356175ec38c33ffb429c214909bd "bibtex progress"
-  "progress.out" 1776172320.66186 1922 d91f495ead934a2877334489f1793df8 "pdflatex"
-  "progress.tex" 1776096250.19327 9915 1f3d92541c9b3314cd7448cc7102ad4d ""
+  "progress.aux" 1776269421.81626 3710 bc88535783d86ebfb24424b0934fdc74 "pdflatex"
+  "progress.bbl" 1776269415.42304 2494 5fe99cb6aee939cba704b522f4e6722a "bibtex progress"
+  "progress.out" 1776269421.81674 1922 d91f495ead934a2877334489f1793df8 "pdflatex"
+  "progress.tex" 1776269420.28104 13475 7bd7f0d397e9512aa076639574f91af8 ""
   (generated)
   "progress.aux"
   "progress.log"

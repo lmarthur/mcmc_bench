@@ -26,46 +26,27 @@ discovery. The high dimensionality and multi-modality of posterior distributions
 can pose problems for popular inference tools. To ensure that the astrophysics
 community is fully leveraging available inference algorithms, we benchmark a
 set of widespread tools from across the astrophysical literature. We benchmark
-eight inference algorithms---random walk Metropolis-Hastings (RWMH),
+seven inference algorithms---random walk Metropolis-Hastings (RWMH),
 affine-invariant ensemble sampling, parallel tempering, NUTS, SMC with
-tempering, non-reversible parallel tempering, ensemble Kalman sampling, and
-nested sampling (as a non-MCMC comparator)---on two test problems: a synthetic
+tempering, non-reversible parallel tempering, and nested sampling (as a
+non-MCMC comparator)---on two test problems: a synthetic
 8-component 2D Gaussian mixture with known ground truth, and a simulated
 exoplanet transit with stellar spots. All experiments run on AMD EPYC 9474F
 48-core CPUs and Nvidia L40S GPUs using JAX to ensure
 implementation-agnostic comparison. We evaluate each sampler on mode
-recovery, posterior accuracy, and computational efficiency (ESS per unit compute
-time), and will produce a concrete set of recommendations for practitioners.
+recovery, posterior accuracy, and computational efficiency (ESS per log-likelihood evaluation and ESS per
+wall-clock second), and will produce a concrete set of recommendations for practitioners.
 \end{abstract}
 
 % -----------------------------------------------------------------------
 \section{Project Overview}
 
-The central question of this project is: \textit{Which parallelizable
-MCMC-family samplers most reliably recover multimodal posteriors in
-astrophysical settings, and at what computational cost?} We benchmark eight
-algorithms: RWMH, affine-invariant ensemble sampling \cite{goodman2010,emcee},
-reversible parallel tempering (SEO) \cite{vousden2016}, non-reversible parallel
-tempering (DEO) \cite{syed2019}, NUTS, SMC with tempering \cite{delmoral2006},
-ensemble Kalman sampling \cite{garbuno2020}, and nested sampling
-\cite{speagle2020} as a non-MCMC reference.
+The central question of this project is: \emph{Which parallelizable MCMC-family samplers most reliably recover multi-modal posteriors in astrophysical settings, and at what computational cost?} We aim to benchmark seven algorithms: Random-Walk Metropolis Hastings (RWMH), affine-invariant ensemble sampling \cite{goodman2010,emcee}, reversible parallel tempering (Stochastic Even Odd, SEO) \cite{vousden2016}, non-reversible parallel tempering (Deterministic Even Odd, DEO) \cite{syed2019}, NUTS, SMC with tempering \cite{delmoral2006}, and nested sampling \cite{speagle2020} as a non-MCMC reference.\footnote{Ensemble Kalman sampling \cite{garbuno2020} was originally planned as an eighth algorithm but is deferred pending completion of all other sampler runs; it will be included if time permits.}
 
-We evaluate each sampler on two test problems. The first is an 8-component 2D
-Gaussian mixture with fully known ground-truth modes, weights, and covariances,
-enabling precise measurement of mode recovery and posterior accuracy. The second
-is a simulated exoplanet transit with stellar spots, a problem known to produce
-multimodal posteriors, which tests each sampler in a realistic astrophysical
-setting.
+We evaluate each sampler on two test problems. The first is an 8-component 2D Gaussian mixture with fully known ground-truth modes, weights, and covariances, enabling precise measurement of mode recovery and posterior accuracy. This problem is advantageous for two reasons: its simple analytical form and low-dimension provides an intuitive visualization of each sampler's results, yet, despite this simplicity, accurately recovering all eight components remains a challenging task. The second is a simulated exoplanet transit with active regions on the host star's surface, a problem known to produce multi-modal and highly correlated posteriors \cite{Pinhas2018, Rackham2018, Sagynbayeva2025}. Active regions have been a growing source of bias in exoplanet science \cite{Murray2025}, yet no systematic benchmarking has identified the most reliable sampler for jointly constraining active region and exoplanet properties. The evaluation criteria are discussed in Section~6.
 
-The primary evaluation criteria are: mode recovery (fraction of modes recovered,
-recovered mode weights), posterior accuracy (Wasserstein-2 distance from ground
-truth where available), and computational efficiency (ESS per log-density
-evaluation and ESS per wall-clock second). Secondary diagnostics
-include $\hat{R}$, acceptance rates, and---for parallel tempering variants---swap
-acceptance rates and round-trip counts between temperature levels.
-
-The full implementation stack is JAX~\cite{jax2018github} / BlackJAX~\cite{blackjax} /
-NumPyro~\cite{numpyro}, ensuring hardware-accelerated, implementation-agnostic
+The full implementation stack is \texttt{JAX}\footnote{\url{https://github.com/jax-ml/jax}}~\cite{jax2018github} / \texttt{BlackJAX}\footnote{\url{https://github.com/blackjax-devs/blackjax}}~\cite{blackjax} /
+\texttt{NumPyro}\footnote{\url{https://github.com/pyro-ppl/numpyro}}~\cite{numpyro}, ensuring hardware-accelerated, implementation-agnostic
 comparison across all algorithms.
 
 % -----------------------------------------------------------------------
@@ -74,17 +55,12 @@ comparison across all algorithms.
 The division of labor has been reshuffled relative to the original proposal.
 Lucas Arthur has taken ownership of both parallel tempering variants---reversible
 SEO and non-reversible DEO---in addition to his originally assigned algorithms
-(NUTS and SMC with tempering). This consolidation arose naturally because the two
-tempering variants share substantial infrastructure (temperature ladder
-management, swap kernels, diagnostic logging), and keeping them under a single
-owner reduced integration overhead.
+(NUTS and SMC with tempering).
 
-Samson Mercier has taken on all forward model development, including
-implementation and validation of the stellar spot transit model against external
-transit-fitting codes, in addition to his originally assigned algorithms (RWMH,
-affine-invariant MCMC, and nested sampling).
+In addition to his originally assigned algorithms (RWMH,
+affine-invariant MCMC, and nested sampling), Samson Mercier has taken on minor development of the forward transit model.
 
-The ensemble Kalman sampler (EKS) is deprioritized. Implementation is on hold
+The ensemble Kalman sampler (EKS) is de-prioritized. Implementation is on hold
 until all other samplers have been run and results collated across both test
 problems. Samson Mercier will implement it if time permits; it will be omitted
 from the final comparison if it is not ready in time.
@@ -105,32 +81,43 @@ standardized format, corner plots, and a diagnostics record containing ESS,
 $\hat{R}$, acceptance rates, recovered mode weights, and inter-mode transition
 counts (for chain-based methods).
 
-\subsection{Stellar Spot Transit Model --- Forward Model Complete, Sampling Not
-Yet Started}
+\subsection{Stellar Spot Transit Model --- Forward Model Complete, Sampling Not Yet Started}
 
-The transit forward model has been implemented using the \texttt{sajax} library
-with a NumPyro likelihood and a BlackJAX-compatible log-density interface. The
-inference problem is to recover three spot parameters---latitude, longitude, and
-radius---from a synthetic noisy light curve generated from a known ground-truth
-configuration. This is a reduced scope relative to the proposal, which described
-a 12-parameter model; the three-parameter version was chosen to keep the transit
-problem tractable while preserving the multimodal structure of interest. Samson
-Mercier has validated the forward model against independent transit-fitting codes.
+The transit forward model has been implemented using the \texttt{SAJAX} library\footnote{\url{https://github.com/SamMerc/sajax}}
+with a NumPyro likelihood and BlackJAX-compatible log-density interface.
 
-Sampler scripts for the transit problem have not yet been written. Writing and
-running these scripts is the primary remaining task.
+Each active region is described by four parameters (longitude, latitude, angular size, and contrast); three stellar parameters (two limb-darkening coefficients and rotational period) and seven planetary orbital parameters complete the model, yielding 17 free parameters after fixing the mid-transit time (typically known to minute-level precision). Tight Gaussian priors are placed on the orbital and rotation periods, centered on truth.
+
+Samson Mercier has validated the forward model against independent transit-fitting codes. Sampler scripts for the transit problem have not yet been written. Writing and running these scripts is the primary remaining task.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.75\textwidth}
+\centering\textit{[Placeholder: synthetic transit light curve]}
+\end{minipage}}
+\caption{Synthetic exoplanet transit light curve generated by the \texttt{SAJAX} forward
+  model. The $x$-axis shows time from mid-transit (hours) and the $y$-axis shows
+  normalized stellar flux. The transit profile is modulated by two active regions---a
+  dark spot and a bright facula---on the stellar surface.}
+\label{fig:lightcurve}
+\end{figure}
 
 % -----------------------------------------------------------------------
 \section{Preliminary Results: Gaussian Mixture}
 
-Detailed quantitative analysis is reserved for the final report; we summarize
-high-level qualitative observations here. Notable observations include:
+Notable observations include:
 
 \begin{itemize}
   \item \textbf{RWMH} shows poor mixing between modes. The chain rarely crosses
     the low-density region separating mixture components, resulting in
     substantially fewer inter-mode transitions and lower ESS per evaluation than
-    all other methods.
+    all other methods. Performance is sensitive to initialization; chains started
+    near a single mode frequently fail to discover remaining components.
+  \item \textbf{Affine-invariant ensemble sampling} shows moderate inter-mode
+    mixing when walkers are initialized broadly across the support, but degrades
+    substantially when the ensemble is concentrated near a single mode.
+  \item \textbf{Reversible PT (SEO)} achieves inter-mode mixing through
+    temperature swaps, though at a lower rate than DEO at matched compute budgets.
   \item \textbf{Non-reversible PT (DEO)} achieves substantially more inter-mode
     transitions than reversible PT (SEO) at matched compute budgets, consistent
     with the theoretical prediction that non-reversible temperature swaps improve
@@ -142,6 +129,22 @@ high-level qualitative observations here. Notable observations include:
     evaluation on this low-dimensional problem; their relative performance on the
     higher-dimensional transit model remains to be seen.
 \end{itemize}
+Initialization sensitivity is a recurring theme across chain-based methods; we
+are actively exploring parameter tuning to establish fair comparison baselines
+ahead of the transit model runs.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}[c][7cm][c]{0.75\textwidth}
+\centering\textit{[Placeholder: SMC corner plot]}
+\end{minipage}}
+\caption{Corner plot of the SMC with tempering posterior on the 8-component 2D Gaussian
+  mixture. Diagonal panels show 1D marginal posteriors with parameter value on the
+  $x$-axis and normalized density on the $y$-axis; the off-diagonal panel shows the 2D
+  joint marginal with $x_1$ on the $x$-axis and $x_2$ on the $y$-axis. Black crosses
+  mark the true component means.}
+\label{fig:smc-corner}
+\end{figure}
 
 % -----------------------------------------------------------------------
 \section{Revised Plan and Remaining Tasks}
@@ -168,27 +171,50 @@ Write final report                              & Both   & May 1  \\
 % -----------------------------------------------------------------------
 \section{Planned Figures and Evaluation Framework}
 
-Comparing the eight algorithms requires care because they produce
+Comparing the seven algorithms requires a unified evaluation framework because they produce
 fundamentally different outputs: correlated samples (RWMH, PT, NUTS), weighted
-particle sets (SMC, nested sampling), or continuously evolved ensembles (EKS,
-affine-invariant). We therefore report efficiency as ESS per log-likelihood
-evaluation, the most universally applicable unit of compute. For chain-based
-methods, warm-up evaluations are included in the denominator to give an honest
-accounting of total compute. The primary mode-recovery metrics are the per-mode
-weight error $|\hat{w}_k - w_k|$, total variation distance from the true
-mixture, and (for chain methods) inter-mode transition count. For the Gaussian
-mixture we also report Wasserstein-2 distance to ground truth; for the transit
-model we use nested-sampling output as a reference distribution.
+particle sets (SMC, nested sampling), or continuously evolved ensembles (affine-invariant).
+We therefore report efficiency as ESS per log-likelihood evaluation and ESS per
+wall-clock second. The primary evaluation criteria are:
+\begin{enumerate}
+    \item \textbf{Mode-recovery metrics:} the per-mode weight error $|\hat{w}_k - w_k|$,
+      total variation distance from the true mixture, and (for chain methods) inter-mode
+      transition count. For the Gaussian mixture, these are evaluated directly against
+      ground truth; mode recovery is excluded from the transit model comparison since
+      ground-truth modes are not readily available.
+    \item \textbf{Computational efficiency:} ESS per log-likelihood evaluation and ESS
+      per wall-clock second. For chain-based methods, warm-up evaluations and warm-up
+      time are included in the respective denominators.
+\end{enumerate}
+Secondary diagnostics include the Gelman--Rubin potential scale reduction factor
+($\hat{R}$), acceptance rates, and---for parallel tempering variants---swap acceptance
+rates and round-trip counts.
 
-Anticipated figures: (1) KDE posterior overlays for all samplers on the 2D
-mixture against the true density; (2) per-mode weight recovery bar charts;
-(3) ESS per likelihood evaluation across samplers and both problems; (4)
-convergence curves (Wasserstein distance vs.\ evaluations); (5) PT swap
-acceptance and round-trip rates for SEO vs.\ DEO \cite{syed2019}; (6) transit
-model corner plots per sampler; (7) a summary table of $\hat{R}$, MCSE,
-ESS/eval, and modes recovered across both problems.
+The main body will contain three figures:
+\begin{enumerate}
+    \item \textbf{KDE posterior overlay (Gaussian mixture):} one panel per sampler, arranged
+      in a grid. The $x$-axis is the first mixture dimension $x_1$ and the $y$-axis is the
+      second dimension $x_2$; filled contours show the true mixture density and overlaid KDE
+      contours show the sampler's recovered posterior.
+    \item \textbf{Transit model comparison:} a two-panel corner plot contrasting the best-
+      and worst-performing samplers on the transit problem. Along the diagonal, each panel
+      shows a 1D marginal posterior with the parameter value on the $x$-axis and normalized
+      density on the $y$-axis. Off-diagonal panels show 2D joint marginals with the two
+      respective parameter values on the $x$- and $y$-axes, with contours at the 68th and
+      95th percentile levels.
+    \item \textbf{Summary table:} rows are samplers; columns are ESS per log-likelihood
+      evaluation, ESS per wall-clock second (both reported for each test problem),
+      fraction of modes recovered (Gaussian mixture only), $\hat{R}$, and acceptance rate.
+\end{enumerate}
 
-\bibliographystyle{plain}
+Full per-sampler diagnostics are relegated to an appendix. For each sampler on both test
+problems, the appendix includes: a scatter plot of raw posterior samples (Gaussian mixture:
+$x$-axis $x_1$, $y$-axis $x_2$; transit model: one 2D projection per parameter pair),
+trace plots for each parameter ($x$-axis: iteration number; $y$-axis: parameter value),
+and a full corner plot (diagonal panels: parameter value vs.\ normalized density; off-diagonal
+panels: pairwise parameter values with density contours).
+
+\bibliographystyle{unsrt}
 \bibliography{refs}
 
 \end{document}

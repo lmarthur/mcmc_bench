@@ -1,5 +1,40 @@
 \begin{thebibliography}{10}
 
+\bibitem{goodman2010}
+Jonathan Goodman and Jonathan Weare.
+\newblock Ensemble samplers with affine invariance.
+\newblock {\em Communications in Applied Mathematics and Computational Science}, 5(1):65--80, 2010.
+
+\bibitem{emcee}
+D.~{Foreman-Mackey}, D.~W. {Hogg}, D.~{Lang}, and J.~{Goodman}.
+\newblock emcee: {The MCMC Hammer}.
+\newblock {\em Publications of the Astronomical Society of the Pacific}, 125:306--312, 2013.
+
+\bibitem{vousden2016}
+W.~D. Vousden, W.~M. Farr, and I.~Mandel.
+\newblock Dynamic temperature selection for parallel tempering in {Markov} chain {Monte Carlo} simulations.
+\newblock {\em Monthly Notices of the Royal Astronomical Society}, 455(2):1919--1937, 2016.
+
+\bibitem{syed2019}
+Saifuddin Syed, Alexandre {Bouchard-C\^{o}t\'{e}}, George Deligiannidis, and Arnaud Doucet.
+\newblock Non-reversible parallel tempering: a scalable highly parallel {MCMC} scheme.
+\newblock {\em Journal of the Royal Statistical Society: Series B (Statistical Methodology)}, 84(2):321--350, 2022.
+
+\bibitem{delmoral2006}
+Pierre {Del Moral}, Arnaud Doucet, and Ajay Jasra.
+\newblock Sequential {Monte Carlo} samplers.
+\newblock {\em Journal of the Royal Statistical Society: Series B (Statistical Methodology)}, 68(3):411--436, 2006.
+
+\bibitem{speagle2020}
+Joshua~S. Speagle.
+\newblock dynesty: a dynamic nested sampling package for estimating {Bayesian} posteriors and evidences.
+\newblock {\em Monthly Notices of the Royal Astronomical Society}, 493(3):3132--3158, 2020.
+
+\bibitem{garbuno2020}
+Alfredo {Garbuno-Inigo}, Franca Hoffmann, Wuchen Li, and Andrew~M. Stuart.
+\newblock Interacting {Langevin} diffusions: Gradient structure and ensemble { Kalman} sampler.
+\newblock {\em SIAM Journal on Applied Dynamical Systems}, 19(1):412--441, 2020.
+
 \bibitem{jax2018github}
 James Bradbury, Roy Frostig, Peter Hawkins, Matthew~James Johnson, Yash Katariya, Chris Leary, Dougal Maclaurin, George Necula, Adam Paszke, Jake Vander{P}las, Skye Wanderman-{M}ilne, and Qiao Zhang.
 \newblock {JAX}: composable transformations of {P}ython+{N}um{P}y programs, 2018.
@@ -9,44 +44,9 @@ Alberto Cabezas, Adrien Corenflos, Junpeng Lao, and R~\'{e}mi Louf.
 \newblock {BlackJAX}: Composable {Bayesian} inference in {JAX}.
 \newblock arXiv:2402.10797, 2024.
 
-\bibitem{delmoral2006}
-Pierre {Del Moral}, Arnaud Doucet, and Ajay Jasra.
-\newblock Sequential {Monte Carlo} samplers.
-\newblock {\em Journal of the Royal Statistical Society: Series B (Statistical Methodology)}, 68(3):411--436, 2006.
-
-\bibitem{emcee}
-D.~{Foreman-Mackey}, D.~W. {Hogg}, D.~{Lang}, and J.~{Goodman}.
-\newblock emcee: {The MCMC Hammer}.
-\newblock {\em Publications of the Astronomical Society of the Pacific}, 125:306--312, 2013.
-
-\bibitem{garbuno2020}
-Alfredo {Garbuno-Inigo}, Franca Hoffmann, Wuchen Li, and Andrew~M. Stuart.
-\newblock Interacting {Langevin} diffusions: Gradient structure and ensemble { Kalman} sampler.
-\newblock {\em SIAM Journal on Applied Dynamical Systems}, 19(1):412--441, 2020.
-
-\bibitem{goodman2010}
-Jonathan Goodman and Jonathan Weare.
-\newblock Ensemble samplers with affine invariance.
-\newblock {\em Communications in Applied Mathematics and Computational Science}, 5(1):65--80, 2010.
-
 \bibitem{numpyro}
 Du~Phan, Neeraj Pradhan, and Martin Jankowiak.
 \newblock Composable effects for flexible and accelerated probabilistic programming in {NumPyro}.
 \newblock arXiv:1912.11554, 2019.
-
-\bibitem{speagle2020}
-Joshua~S. Speagle.
-\newblock dynesty: a dynamic nested sampling package for estimating {Bayesian} posteriors and evidences.
-\newblock {\em Monthly Notices of the Royal Astronomical Society}, 493(3):3132--3158, 2020.
-
-\bibitem{syed2019}
-Saifuddin Syed, Alexandre {Bouchard-C\^{o}t\'{e}}, George Deligiannidis, and Arnaud Doucet.
-\newblock Non-reversible parallel tempering: a scalable highly parallel {MCMC} scheme.
-\newblock {\em Journal of the Royal Statistical Society: Series B (Statistical Methodology)}, 84(2):321--350, 2022.
-
-\bibitem{vousden2016}
-W.~D. Vousden, W.~M. Farr, and I.~Mandel.
-\newblock Dynamic temperature selection for parallel tempering in {Markov} chain {Monte Carlo} simulations.
-\newblock {\em Monthly Notices of the Royal Astronomical Society}, 455(2):1919--1937, 2016.
 
 \end{thebibliography}
