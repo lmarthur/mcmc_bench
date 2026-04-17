@@ -22,13 +22,16 @@ import numpy as np
 
 # Import our specific model components
 from model import (
-    make_log_density, 
-    plot_model, 
-    OUTPUT_DIR, 
-    PARAM_NAMES, 
+    make_log_density,
+    plot_model,
+    _call_sajax,
+    OUTPUT_DIR,
+    PARAM_NAMES,
     GROUND_TRUTH,
+    TIMES,
+    OBS_LIGHT_CURVE,
     # Import bounds for initialization
-    LAT_MIN, LAT_MAX, LONG_MIN, LONG_MAX, SIZE_MIN, SIZE_MAX, 
+    LAT_MIN, LAT_MAX, LONG_MIN, LONG_MAX, SIZE_MIN, SIZE_MAX,
     FLUX_MIN, FLUX_MAX, P_ROT_MIN, P_ROT_MAX, LDC_U1_MIN, LDC_U1_MAX,
     LDC_U2_MIN, LDC_U2_MAX, PLANET_RADIUS_MIN, PLANET_RADIUS_MAX,
     SEMI_MAJOR_MIN, SEMI_MAJOR_MAX, INCLINATION_MIN, INCLINATION_MAX,
@@ -38,9 +41,9 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 500   # Increased for a high-dimensional model
-NUM_SAMPLES = 2000
-NUM_WALKERS = 64    # Generally want walkers > 2 * NDIM (17 * 2 = 34)
+NUM_BURNIN = 200   # Scaled down with fewer total steps
+NUM_SAMPLES = 500
+NUM_WALKERS = 50
 NDIM = len(PARAM_NAMES)
 
 def get_initial_coords(key, num_walkers):
@@ -141,11 +144,85 @@ def main(seed=0, save_outputs=True):
         plt.savefig(AFFINV_OUTPUT_DIR / "traces_subset.png")
         plt.close()
 
-        # 2. Corner Plot for planet parameters
-        planet_vars = ["planet_radius", "semimajor_axis", "inclination", "P_orb"]
-        az.plot_pair(idata, var_names=planet_vars, kind="kde", marginals=True)
-        plt.savefig(AFFINV_OUTPUT_DIR / "planet_corner.png")
+        # 2. Corner plot — all parameters
+        az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
+        az.plot_pair(
+            idata,
+            var_names=PARAM_NAMES,
+            kind="kde",
+            marginals=True,
+            figsize=(24, 24),
+        )
+        plt.savefig(AFFINV_OUTPUT_DIR / "corner_all.png", dpi=120, bbox_inches="tight")
         plt.close()
+
+        # 3. Best-fit light curve using posterior mean
+        mean_params = samples.mean(axis=(0, 1))
+        mean_dict = {name: float(mean_params[i]) for i, name in enumerate(PARAM_NAMES)}
+
+        lc_bestfit = np.array(
+            _call_sajax(
+                TIMES,
+                np.array([mean_dict["spot_lat"], mean_dict["fac_lat"]]),
+                np.array([mean_dict["spot_long"], mean_dict["fac_long"]]),
+                np.array([mean_dict["spot_size"], mean_dict["fac_size"]]),
+                np.stack([np.array([mean_dict["spot_flux"]]), np.array([mean_dict["fac_flux"]])]),
+                mean_dict["p_rot"],
+                mean_dict["planet_radius"],
+                mean_dict["semimajor_axis"],
+                np.deg2rad(mean_dict["inclination"]),
+                mean_dict["eccentricity"],
+                mean_dict["arg_periapsis"],
+                mean_dict["P_orb"],
+                mean_dict["LDC_u1"],
+                mean_dict["LDC_u2"],
+            )["lc"]
+        )
+
+        lc_true = np.array(
+            _call_sajax(
+                TIMES,
+                np.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
+                np.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
+                np.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
+                np.stack([np.array([GROUND_TRUTH["spot_flux"]]), np.array([GROUND_TRUTH["fac_flux"]])]),
+                GROUND_TRUTH["p_rot"],
+                GROUND_TRUTH["planet_radius"],
+                GROUND_TRUTH["semimajor_axis"],
+                np.deg2rad(GROUND_TRUTH["inclination"]),
+                GROUND_TRUTH["eccentricity"],
+                GROUND_TRUTH["arg_periapsis"],
+                GROUND_TRUTH["P_orb"],
+                GROUND_TRUTH["LDC_u1"],
+                GROUND_TRUTH["LDC_u2"],
+            )["lc"]
+        )
+
+        fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
+                                             gridspec_kw={"height_ratios": [3, 1]})
+
+        ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
+                      label="Observations", zorder=1)
+        ax_lc.plot(TIMES, lc_true, lw=2, color="steelblue", label="True", zorder=2)
+        ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson", linestyle="--",
+                   label="Posterior mean fit", zorder=3)
+        ax_lc.set_ylabel("Normalised flux")
+        ax_lc.legend(frameon=False)
+        ax_lc.spines["top"].set_visible(False)
+        ax_lc.spines["right"].set_visible(False)
+
+        residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
+        ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
+        ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
+        ax_res.set_xlabel("Time [days]")
+        ax_res.set_ylabel("Residuals [ppm]")
+        ax_res.spines["top"].set_visible(False)
+        ax_res.spines["right"].set_visible(False)
+
+        fig.tight_layout()
+        lc_path = AFFINV_OUTPUT_DIR / "bestfit_lightcurve.png"
+        fig.savefig(lc_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
 
     return summary
 
