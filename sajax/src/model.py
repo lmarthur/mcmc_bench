@@ -93,7 +93,7 @@ FLUX_ACTIVE_SPOT = np.array([0.7])   # spot is 30% darker
 FLUX_ACTIVE_FACULA = np.array([1.1]) # facula is 10% brighter
 
 STELLAR_INC = 90.0          
-STELLAR_GRID_SIZE = 200  
+STELLAR_GRID_SIZE = 100
 VE = 2.0                 
 
 SIGMA_NOISE = 100e-6     # ~100 ppm
@@ -116,7 +116,7 @@ LAT_MIN, LAT_MAX = -90.0, 90.0
 LONG_MIN, LONG_MAX = 0.0, 360.0
 SIZE_MIN, SIZE_MAX = 1.0, 90.0
 FLUX_MIN, FLUX_MAX = 0.1, 2.0
-P_ROT_MIN, P_ROT_MAX = 5.0, 20.0
+P_ROT_MIN, P_ROT_MAX = 0.1, 5.0
 LDC_U1_MIN, LDC_U1_MAX = -10.0, 10.0
 LDC_U2_MIN, LDC_U2_MAX = -10.0, 10.0
 
@@ -124,7 +124,7 @@ LDC_U2_MIN, LDC_U2_MAX = -10.0, 10.0
 # Prior bounds: planet transit
 # ---------------------------------------------------------------------------
 PLANET_RADIUS_MIN, PLANET_RADIUS_MAX = 0.001, 0.3  # Rp/Rs
-SEMI_MAJOR_MIN, SEMI_MAJOR_MAX = 0.0, 10.0         # impact parameter
+SEMI_MAJOR_MIN, SEMI_MAJOR_MAX = 0.0, 10.0         # a/R* (semi-major axis in stellar radii)
 INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
 P_ORB_MIN, P_ORB_MAX = 1.0, 10.0                   # orbital period [days]
 ECCENTRICITY_MIN, ECCENTRICITY_MAX = 0.0, 0.5      # eccentricity
@@ -283,7 +283,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     inclination = numpyro.sample("inclination", dist.Uniform(INCLINATION_MIN, INCLINATION_MAX))
     eccentricity = numpyro.sample("eccentricity", dist.Uniform(ECCENTRICITY_MIN, ECCENTRICITY_MAX))
     arg_periapsis = numpyro.sample("arg_periapsis", dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX))
-    P_orb = numpyro.sample("P_orb", dist.Uniform(P_ORB_MIN, P_ORB_MAX))
+    P_orb = numpyro.sample("P_orb", dist.Normal(TRUE_P_ORB, 0.01))
 
 # --- DYNAMIC CALCULATIONS (JAX) ---
     
@@ -293,10 +293,10 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
 
     planet_xyz_all = compute_planet_sky_positions(
         times=model_dict["times"],
-        t0=TRUE_T0_TRANSIT,      
-        period=P_orb,       
+        t0=TRUE_T0_TRANSIT,
+        period=P_orb,
         a_over_rstar=semimajor_axis,
-        inclination=inclination,
+        inclination=jnp.deg2rad(inclination),
         ecc=eccentricity,
         omega_peri=arg_periapsis
     )
@@ -331,8 +331,8 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
         wavelength=model_dict["wavelength"],
         flux_quiet_interp=model_dict["flux_quiet"],
         flux_active_interp=flux_active,
-        ldc_coeffs=jnp.array([LDC_u1, LDC_u2]),
-        I_profile=jnp.array([]),
+        ldc_coeffs=jnp.array([[LDC_u1, LDC_u2]]),
+        I_profile=model_dict["I_profile"],
         mu_profile_pts=model_dict["mu_profile_pts"],
         x_disc=model_dict["x_disc"],
         y_disc=model_dict["y_disc"],
@@ -356,9 +356,13 @@ def make_log_density(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STA
     """
     Returns a BlackJAX-compatible log-density function.
 
-    The returned function accepts an 8-element parameter vector:
+    The returned function accepts a 17-element parameter vector:
         x = [spot_lat, spot_long, spot_size, spot_flux,
-             fac_lat, fac_long, fac_size, fac_flux]
+             fac_lat, fac_long, fac_size, fac_flux,
+             p_rot,
+             planet_radius, semimajor_axis, inclination (degrees),
+             eccentricity, arg_periapsis, P_orb,
+             ldc_u1, ldc_u2]
     """
     y_obs_jnp = jnp.array(y_obs)
 
@@ -372,15 +376,15 @@ def make_log_density(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STA
             "fac_long": x[5],
             "fac_size": x[6],
             "fac_flux": x[7],
-            "P_rot": x[8],
+            "p_rot": x[8],
             "planet_radius": x[9],
             "semimajor_axis": x[10],
             "inclination": x[11],
             "eccentricity": x[12],
             "arg_periapsis": x[13], 
             "P_orb": x[14], 
-            "LDC_u1": x[15],
-            "LDC_u2": x[16],
+            "ldc_u1": x[15],
+            "ldc_u2": x[16],
         }
         ld, _ = log_density(
             sajax_model,
@@ -405,9 +409,10 @@ GROUND_TRUTH = {
     "fac_long": TRUE_FACULA_LONG,
     "fac_size": TRUE_FACULA_SIZE,
     "fac_flux": FLUX_ACTIVE_FACULA[0],
+    "p_rot": TRUE_P_ROT,
     "planet_radius": TRUE_PLANET_RADIUS,
     "semimajor_axis": TRUE_SEMI_MAJOR,
-    "inclination": TRUE_INCLINATION,
+    "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
     "eccentricity": TRUE_ECCENTRICITY,
     "arg_periapsis": TRUE_ARG_PERIAPSIS,
     "P_orb": TRUE_P_ORB,
