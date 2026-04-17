@@ -67,14 +67,34 @@ PRIOR_MAXS = np.array([
 
 def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
     """
-    Initialise chains within ±10 % of the prior range around the ground truth,
-    clipped to stay strictly inside the prior bounds.
+    Initialise chains near the ground truth.
+    Uniform-prior parameters: sample within ±10% of prior range around ground truth.
+    LogNormal/Beta parameters: sample from a tight version of their prior (σ=0.1 in
+    log-space for LogNormal; Uniform(0, 0.1) for eccentricity).
     """
+    key, base_key, k_prot, k_rp, k_sma, k_ecc = jax.random.split(key, 6)
+
     center = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
     width = (PRIOR_MAXS - PRIOR_MINS) * 0.10
     low = np.maximum(PRIOR_MINS, center - width)
     high = np.minimum(PRIOR_MAXS, center + width)
-    return jax.random.uniform(key, shape=(num_chains, NDIM), minval=low, maxval=high)
+    positions = jax.random.uniform(base_key, shape=(num_chains, NDIM), minval=low, maxval=high)
+
+    # Override the four parameters whose priors changed from Uniform
+    # idx 8  — p_rot:          LogNormal(ln(true), 1.0)
+    # idx 9  — planet_radius:  LogNormal(ln(true), 0.5)
+    # idx 10 — semimajor_axis: LogNormal(ln(5.0),  0.5)
+    # idx 12 — eccentricity:   Beta(2, 10)
+    positions = positions.at[:, 8].set(
+        jnp.exp(jax.random.normal(k_prot, (num_chains,)) * 0.1 + jnp.log(center[8])))
+    positions = positions.at[:, 9].set(
+        jnp.exp(jax.random.normal(k_rp,   (num_chains,)) * 0.1 + jnp.log(center[9])))
+    positions = positions.at[:, 10].set(
+        jnp.exp(jax.random.normal(k_sma,  (num_chains,)) * 0.1 + jnp.log(5.0)))
+    positions = positions.at[:, 12].set(
+        jax.random.uniform(k_ecc, (num_chains,), minval=0.0, maxval=0.1))
+
+    return positions
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):

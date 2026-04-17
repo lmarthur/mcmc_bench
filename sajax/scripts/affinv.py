@@ -43,22 +43,25 @@ AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
 NUM_BURNIN = 200   # Scaled down with fewer total steps
 NUM_SAMPLES = 500
-NUM_WALKERS = 50
+NUM_WALKERS = 34
 NDIM = len(PARAM_NAMES)
 
 def get_initial_coords(key, num_walkers):
     """
-    Initialize walkers uniformly within a tight-ish region of the prior 
-    to avoid starting in zero-probability regions.
+    Initialize walkers near the ground truth.
+    Uniform-prior parameters: sample within ±10% of prior range around ground truth.
+    LogNormal/Beta parameters: sample from a tight version of their prior (σ=0.1 in
+    log-space for LogNormal; Uniform(0, 0.1) for eccentricity).
     """
-    # Create an array of mins and maxes based on your model's priors
+    key, base_key, k_prot, k_rp, k_sma, k_ecc = jax.random.split(key, 6)
+
     mins = np.array([
         LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,          # Spot
         LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,          # Facula
-        P_ROT_MIN,                                      # P_rot
-        PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN, 
-        ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN, # Planet
-        LDC_U1_MIN, LDC_U2_MIN                           # LDC
+        P_ROT_MIN,                                      # p_rot       (idx 8)
+        PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN,
+        ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN, # Planet (idx 9-14)
+        LDC_U1_MIN, LDC_U2_MIN                          # LDC
     ])
     maxes = np.array([
         LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
@@ -69,15 +72,27 @@ def get_initial_coords(key, num_walkers):
         LDC_U1_MAX, LDC_U2_MAX
     ])
 
-    # Narrow the range slightly so we don't start exactly on a hard boundary
     center = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
-    width = (maxes - mins) * 0.1 
-    
-    # Randomize around ground truth or within bounds
+    width = (maxes - mins) * 0.1
     low = np.maximum(mins, center - width)
     high = np.minimum(maxes, center + width)
-    
-    return jax.random.uniform(key, shape=(num_walkers, NDIM), minval=low, maxval=high)
+    coords = jax.random.uniform(base_key, shape=(num_walkers, NDIM), minval=low, maxval=high)
+
+    # Override the four parameters whose priors changed from Uniform
+    # idx 8  — p_rot:          LogNormal(ln(true), 1.0)
+    # idx 9  — planet_radius:  LogNormal(ln(true), 0.5)
+    # idx 10 — semimajor_axis: LogNormal(ln(5.0),  0.5)
+    # idx 12 — eccentricity:   Beta(2, 10)
+    coords = coords.at[:, 8].set(
+        jnp.exp(jax.random.normal(k_prot, (num_walkers,)) * 0.1 + jnp.log(center[8])))
+    coords = coords.at[:, 9].set(
+        jnp.exp(jax.random.normal(k_rp,   (num_walkers,)) * 0.1 + jnp.log(center[9])))
+    coords = coords.at[:, 10].set(
+        jnp.exp(jax.random.normal(k_sma,  (num_walkers,)) * 0.1 + jnp.log(5.0)))
+    coords = coords.at[:, 12].set(
+        jax.random.uniform(k_ecc, (num_walkers,), minval=0.0, maxval=0.1))
+
+    return coords
 
 def main(seed=0, save_outputs=True):
     init_key, state_key, sample_key = jax.random.split(jax.random.PRNGKey(seed), 3)

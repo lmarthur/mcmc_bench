@@ -273,15 +273,15 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     fac_size = numpyro.sample("fac_size", dist.Uniform(SIZE_MIN, SIZE_MAX))
     fac_flux = numpyro.sample("fac_flux", dist.Uniform(FLUX_MIN, FLUX_MAX))
 
-    P_rot = numpyro.sample("p_rot", dist.Uniform(P_ROT_MIN, P_ROT_MAX))
+    P_rot = numpyro.sample("p_rot", dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0))
     LDC_u1 = numpyro.sample("ldc_u1", dist.Uniform(LDC_U1_MIN, LDC_U1_MAX))
     LDC_u2 = numpyro.sample("ldc_u2", dist.Uniform(LDC_U2_MIN, LDC_U2_MAX))
 
     # Planet parameters
-    planet_radius = numpyro.sample("planet_radius", dist.Uniform(PLANET_RADIUS_MIN, PLANET_RADIUS_MAX))
-    semimajor_axis = numpyro.sample("semimajor_axis", dist.Uniform(SEMI_MAJOR_MIN, SEMI_MAJOR_MAX))
+    planet_radius = numpyro.sample("planet_radius", dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5))
+    semimajor_axis = numpyro.sample("semimajor_axis", dist.LogNormal(jnp.log(5.0), 0.5))
     inclination = numpyro.sample("inclination", dist.Uniform(INCLINATION_MIN, INCLINATION_MAX))
-    eccentricity = numpyro.sample("eccentricity", dist.Uniform(ECCENTRICITY_MIN, ECCENTRICITY_MAX))
+    eccentricity = numpyro.sample("eccentricity", dist.Beta(2, 10))
     arg_periapsis = numpyro.sample("arg_periapsis", dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX))
     P_orb = numpyro.sample("P_orb", dist.Normal(TRUE_P_ORB, 0.01))
 
