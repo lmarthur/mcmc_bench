@@ -3,7 +3,7 @@
   "num_walkers": 32,
   "num_burnin": 0,
   "num_samples": 2500,
-  "wall_time_s": 2.5293245920038316,
+  "wall_time_s": 2.3861720300001252,
   "mean_acceptance_rate": 0.3477408289909363,
   "total_log_density_evals": 80000,
   "bulk_ess_per_logp_eval": 0.0031125,

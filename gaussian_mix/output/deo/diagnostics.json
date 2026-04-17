@@ -1,6 +1,6 @@
 {
   "sampler": "DEO_ParallelTempering",
-  "wall_time_s": 0.5255673989959178,
+  "wall_time_s": 0.8523116840001421,
   "kernel_type": "mala",
   "num_chains": 15,
   "num_warmup": 0,

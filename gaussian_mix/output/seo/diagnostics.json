@@ -1,6 +1,6 @@
 {
   "sampler": "SEO_ParallelTempering",
-  "wall_time_s": 0.46077159800188383,
+  "wall_time_s": 0.4797274010002184,
   "kernel_type": "mala",
   "num_chains": 15,
   "num_warmup": 0,

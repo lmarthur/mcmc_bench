@@ -1,6 +1,6 @@
 {
   "sampler": "NestedSampling_JAXNS",
-  "wall_time_s": 3.4907511989949853,
+  "wall_time_s": 3.3297530670001834,
   "num_posterior_draws": 5000,
   "prior_scale": 10.0,
   "log_Z_mean": -6.086273303563295,

@@ -6,7 +6,7 @@
   "prior_low": -10.0,
   "prior_high": 10.0,
   "sigma_proposal": 1.0,
-  "wall_time_s": 1.1342030580053688,
+  "wall_time_s": 1.1493491380001615,
   "num_smc_steps": 6,
   "final_tempering_param": 1.0,
   "log_normalizing_constant": 0.006049633026123047,
