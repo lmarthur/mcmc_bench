@@ -41,9 +41,9 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 200   # Scaled down with fewer total steps
-NUM_SAMPLES = 500
-NUM_WALKERS = 34
+NUM_BURNIN = 500
+NUM_SAMPLES = 2000
+NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
 def get_initial_coords(key, num_walkers):

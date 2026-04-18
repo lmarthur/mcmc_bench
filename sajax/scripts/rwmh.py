@@ -39,9 +39,9 @@ from model import (
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
 NDIM = len(PARAM_NAMES)
-NUM_BURNIN = 500
-NUM_SAMPLES = 1000
-NUM_CHAINS = 8
+NUM_BURNIN = 5000
+NUM_SAMPLES = 20000
+NUM_CHAINS = 16
 # Roberts, Gelman & Gilks (1997): 2.38/sqrt(d) targets ~23.4% acceptance
 STEP_SIZE = 2.38 / np.sqrt(NDIM)  # ≈ 0.577 for d=17
 
