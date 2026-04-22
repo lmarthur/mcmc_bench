@@ -1,15 +1,15 @@
 {
   "sampler": "NestedSampling_JAXNS",
-  "wall_time_s": 3.3297530670001834,
+  "wall_time_s": 36.6130747970019,
   "num_posterior_draws": 5000,
   "prior_scale": 10.0,
-  "log_Z_mean": -6.086273303563295,
-  "log_Z_uncert": 0.06121891923333819,
-  "total_likelihood_evals": 276131,
+  "log_Z_mean": -6.0862733267112965,
+  "log_Z_uncert": 0.061218919444636116,
+  "total_likelihood_evals": 276110,
   "total_ns_samples": 5000,
-  "likelihood_evals_per_ns_sample": 55.2262,
-  "jaxns_ess_kish": 762.4952957673106,
-  "ess_per_likelihood_eval": 0.0027613534726898125,
+  "likelihood_evals_per_ns_sample": 55.222,
+  "jaxns_ess_kish": 762.4952926948924,
+  "ess_per_likelihood_eval": 0.0027615634808405795,
   "mode_weights": [
     0.1572,
     0.0848,
@@ -21,14 +21,14 @@
     0.065
   ],
   "true_mode_weights": [
-    0.17499999701976776,
-    0.07500000298023224,
-    0.17499999701976776,
-    0.07500000298023224,
-    0.17499999701976776,
-    0.07500000298023224,
-    0.17499999701976776,
-    0.07500000298023224
+    0.175,
+    0.075,
+    0.175,
+    0.075,
+    0.175,
+    0.075,
+    0.175,
+    0.075
   ],
   "arviz_summary": {
     "mean": {
@@ -56,7 +56,7 @@
       "x2": 0.032
     },
     "ess_bulk": {
-      "x1": 4827.0,
+      "x1": 4825.0,
       "x2": 5010.0
     },
     "ess_tail": {
