@@ -28,12 +28,8 @@ from model import (
     GROUND_TRUTH,
     TIMES,
     OBS_LIGHT_CURVE,
-    LAT_MIN, LAT_MAX, LONG_MIN, LONG_MAX, SIZE_MIN, SIZE_MAX,
-    FLUX_MIN, FLUX_MAX, P_ROT_MIN, P_ROT_MAX, LDC_U1_MIN, LDC_U1_MAX,
-    LDC_U2_MIN, LDC_U2_MAX, PLANET_RADIUS_MIN, PLANET_RADIUS_MAX,
-    SEMI_MAJOR_MIN, SEMI_MAJOR_MAX, INCLINATION_MIN, INCLINATION_MAX,
-    ECCENTRICITY_MIN, ECCENTRICITY_MAX, ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX,
-    P_ORB_MIN, P_ORB_MAX,
+    PRIOR_MINS,
+    PRIOR_MAXS,
 )
 
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
@@ -44,25 +40,6 @@ NUM_SAMPLES = 20000
 NUM_CHAINS = 16
 # Roberts, Gelman & Gilks (1997): 2.38/sqrt(d) targets ~23.4% acceptance
 STEP_SIZE = 2.38 / np.sqrt(NDIM)  # ≈ 0.577 for d=17
-
-
-# Prior bounds array — used for initialisation
-PRIOR_MINS = np.array([
-    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,           # spot
-    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,           # facula
-    P_ROT_MIN,                                       # p_rot
-    PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN,
-    ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN,  # planet
-    LDC_U1_MIN, LDC_U2_MIN,                          # LDC
-])
-PRIOR_MAXS = np.array([
-    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-    P_ROT_MAX,
-    PLANET_RADIUS_MAX, SEMI_MAJOR_MAX, INCLINATION_MAX,
-    ECCENTRICITY_MAX, ARG_PERIAPSIS_MAX, P_ORB_MAX,
-    LDC_U1_MAX, LDC_U2_MAX,
-])
 
 
 def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:

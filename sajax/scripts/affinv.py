@@ -30,19 +30,14 @@ from model import (
     GROUND_TRUTH,
     TIMES,
     OBS_LIGHT_CURVE,
-    # Import bounds for initialization
-    LAT_MIN, LAT_MAX, LONG_MIN, LONG_MAX, SIZE_MIN, SIZE_MAX,
-    FLUX_MIN, FLUX_MAX, P_ROT_MIN, P_ROT_MAX, LDC_U1_MIN, LDC_U1_MAX,
-    LDC_U2_MIN, LDC_U2_MAX, PLANET_RADIUS_MIN, PLANET_RADIUS_MAX,
-    SEMI_MAJOR_MIN, SEMI_MAJOR_MAX, INCLINATION_MIN, INCLINATION_MAX,
-    ECCENTRICITY_MIN, ECCENTRICITY_MAX, ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX,
-    P_ORB_MIN, P_ORB_MAX
+    PRIOR_MINS,
+    PRIOR_MAXS,
 )
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
 NUM_BURNIN = 500
-NUM_SAMPLES = 2000
+NUM_SAMPLES = 5000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
@@ -55,27 +50,10 @@ def get_initial_coords(key, num_walkers):
     """
     key, base_key, k_prot, k_rp, k_sma, k_ecc = jax.random.split(key, 6)
 
-    mins = np.array([
-        LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,          # Spot
-        LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,          # Facula
-        P_ROT_MIN,                                      # p_rot       (idx 8)
-        PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN,
-        ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN, # Planet (idx 9-14)
-        LDC_U1_MIN, LDC_U2_MIN                          # LDC
-    ])
-    maxes = np.array([
-        LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-        LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-        P_ROT_MAX,
-        PLANET_RADIUS_MAX, SEMI_MAJOR_MAX, INCLINATION_MAX,
-        ECCENTRICITY_MAX, ARG_PERIAPSIS_MAX, P_ORB_MAX,
-        LDC_U1_MAX, LDC_U2_MAX
-    ])
-
     center = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
-    width = (maxes - mins) * 0.1
-    low = np.maximum(mins, center - width)
-    high = np.minimum(maxes, center + width)
+    width = (PRIOR_MAXS - PRIOR_MINS) * 0.1
+    low = np.maximum(PRIOR_MINS, center - width)
+    high = np.minimum(PRIOR_MAXS, center + width)
     coords = jax.random.uniform(base_key, shape=(num_walkers, NDIM), minval=low, maxval=high)
 
     # Override the four parameters whose priors changed from Uniform
@@ -153,11 +131,16 @@ def main(seed=0, save_outputs=True):
         idata.to_netcdf(str(AFFINV_OUTPUT_DIR / "sajax_idata.nc"))
         
         # Summary plots
-        # 1. Trace Plots (subset for readability)
-        axes = az.plot_trace(idata, var_names=PARAM_NAMES[:6])
-        plt.tight_layout()
-        plt.savefig(AFFINV_OUTPUT_DIR / "traces_subset.png")
-        plt.close()
+        # 1. Trace Plots (subset for readability) — skip any param with zero variance
+        plot_vars = [
+            p for p in PARAM_NAMES[:6]
+            if np.ptp(samples[:, :, PARAM_NAMES.index(p)]) > 1e-8
+        ]
+        if plot_vars:
+            axes = az.plot_trace(idata, var_names=plot_vars)
+            plt.tight_layout()
+            plt.savefig(AFFINV_OUTPUT_DIR / "traces_subset.png")
+            plt.close()
 
         # 2. Corner plot — all parameters
         az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2

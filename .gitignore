@@ -20,3 +20,7 @@ jax_cache/
 # OS
 .DS_Store
 .coverage
+
+# SLURM sbatch outputs
+*.out
+*.err
