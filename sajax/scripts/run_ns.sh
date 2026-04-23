@@ -14,4 +14,4 @@ module load cuda/13.0.1
 source activate base
 conda activate mcmc_bench
 
-python sajax/scripts/ns.py
+python -u sajax/scripts/ns.py
