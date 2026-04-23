@@ -28,37 +28,16 @@ from model import (
     GROUND_TRUTH,
     TIMES,
     OBS_LIGHT_CURVE,
-    LAT_MIN, LAT_MAX, LONG_MIN, LONG_MAX, SIZE_MIN, SIZE_MAX,
-    FLUX_MIN, FLUX_MAX, P_ROT_MIN, P_ROT_MAX, LDC_U1_MIN, LDC_U1_MAX,
-    LDC_U2_MIN, LDC_U2_MAX, PLANET_RADIUS_MIN, PLANET_RADIUS_MAX,
-    SEMI_MAJOR_MIN, SEMI_MAJOR_MAX, INCLINATION_MIN, INCLINATION_MAX,
-    ECCENTRICITY_MIN, ECCENTRICITY_MAX, ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX,
-    P_ORB_MIN, P_ORB_MAX,
+    PRIOR_MINS,
+    PRIOR_MAXS,
 )
 
 NUTS_OUTPUT_DIR = OUTPUT_DIR / "nuts"
 
 NDIM = len(PARAM_NAMES)
-NUM_WARMUP = 500
+NUM_WARMUP = 250
 NUM_SAMPLES = 1000
-NUM_CHAINS = 8
-
-PRIOR_MINS = np.array([
-    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,
-    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,
-    P_ROT_MIN,
-    PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN,
-    ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN,
-    LDC_U1_MIN, LDC_U2_MIN,
-])
-PRIOR_MAXS = np.array([
-    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-    P_ROT_MAX,
-    PLANET_RADIUS_MAX, SEMI_MAJOR_MAX, INCLINATION_MAX,
-    ECCENTRICITY_MAX, ARG_PERIAPSIS_MAX, P_ORB_MAX,
-    LDC_U1_MAX, LDC_U2_MAX,
-])
+NUM_CHAINS = 4
 
 
 def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
@@ -102,14 +81,51 @@ def main(seed: int = 0, save_outputs: bool = True):
     if save_outputs:
         plot_model(filename="sajax_ground_truth.png")
 
+    # --- Diagnostic 1: JAX autodiff vs finite-difference per parameter ---
+    _print("=== Diagnostic 1: JAX grad vs finite-difference grad (h=1e-4) ===")
+    warmup_start = get_initial_positions(init_key, 1)[0]
+    grad = jax.grad(log_density_fn)(warmup_start)
+    h = 1e-4
+    _print(f"  {'Parameter':<22} {'JAX grad':>14} {'FD grad':>14} {'ratio':>10} {'match?':>8}")
+    _print("  " + "-" * 70)
+    for i, name in enumerate(PARAM_NAMES):
+        fd_grad = float(
+            (log_density_fn(warmup_start.at[i].add(h)) - log_density_fn(warmup_start.at[i].add(-h))) / (2 * h)
+        )
+        jg = float(grad[i])
+        if abs(fd_grad) > 1e-30:
+            ratio = jg / fd_grad
+        elif abs(jg) < 1e-30:
+            ratio = float("nan")
+        else:
+            ratio = float("inf")
+        match = "OK" if abs(jg - fd_grad) < max(1e-2 * max(abs(jg), abs(fd_grad)), 1e-6) else "MISMATCH"
+        _print(f"  {name:<22} {jg:>14.4g} {fd_grad:>14.4g} {ratio:>10.4f} {match:>8}")
+    _print()
+
     t0 = time.perf_counter()
 
     # --- Warmup: adapt one chain, share parameters across all chains ---
     _print(f"Running warmup ({NUM_WARMUP} steps)...")
-    warmup_start = get_initial_positions(init_key, 1)[0]
     warmup = blackjax.window_adaptation(blackjax.nuts, log_density_fn)
     (_, parameters), _ = warmup.run(warmup_key, warmup_start, num_steps=NUM_WARMUP)
     _print(f"  Adapted step size: {parameters['step_size']:.4f}")
+
+    # --- Diagnostic 3: adapted inverse mass matrix ---
+    _print("\n=== Diagnostic 3: Adapted inverse mass matrix ===")
+    inv_mass = np.array(parameters["inverse_mass_matrix"])
+    if inv_mass.ndim == 1:
+        _print(f"  {'Parameter':<22} {'inv_M diag':>14} {'eff. std':>12}")
+        _print("  " + "-" * 50)
+        for name, v in zip(PARAM_NAMES, inv_mass):
+            eff_std = float(np.sqrt(v)) if v >= 0 else float("nan")
+            _print(f"  {name:<22} {float(v):>14.4g} {eff_std:>12.4g}")
+    else:
+        _print(f"  {'Parameter':<22} {'inv_M diag':>14}")
+        _print("  " + "-" * 38)
+        for name, v in zip(PARAM_NAMES, np.diag(inv_mass)):
+            _print(f"  {name:<22} {float(v):>14.4g}")
+    _print()
 
     # --- Initialize chains ---
     init_key2, sample_key = jax.random.split(sample_key)

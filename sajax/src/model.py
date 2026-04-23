@@ -117,8 +117,8 @@ LONG_MIN, LONG_MAX = 0.0, 360.0
 SIZE_MIN, SIZE_MAX = 1.0, 90.0
 FLUX_MIN, FLUX_MAX = 0.1, 2.0
 P_ROT_MIN, P_ROT_MAX = 0.1, 5.0
-LDC_U1_MIN, LDC_U1_MAX = -10.0, 10.0
-LDC_U2_MIN, LDC_U2_MAX = -10.0, 10.0
+LDC_U1_MIN, LDC_U1_MAX = 0.0, 1.0
+LDC_U2_MIN, LDC_U2_MAX = 0.0, 1.0
 
 # ---------------------------------------------------------------------------
 # Prior bounds: planet transit
@@ -129,6 +129,46 @@ INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
 P_ORB_MIN, P_ORB_MAX = 1.0, 10.0                   # orbital period [days]
 ECCENTRICITY_MIN, ECCENTRICITY_MAX = 0.0, 0.5      # eccentricity
 ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX = 0.0, 360.0  # argument of periastron [degrees]
+
+# ---------------------------------------------------------------------------
+# Prior distributions (numpyro) — single source of truth for all samplers
+# ---------------------------------------------------------------------------
+PRIOR_DISTRIBUTIONS = {
+    "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
+    "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
+    "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
+    "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
+    "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
+    "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
+    "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
+    "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
+    "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
+    "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
+    "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
+    "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
+    "eccentricity":  dist.Beta(1, 5),
+    "arg_periapsis": dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX),
+    "P_orb":         dist.Normal(TRUE_P_ORB, 0.01),
+    "ldc_u1":        dist.Normal(0.0, 5.0),
+    "ldc_u2":        dist.Normal(0.0, 5.0),
+}
+
+PRIOR_MINS = np.array([
+    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,
+    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,
+    P_ROT_MIN,
+    PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN,
+    ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN,
+    LDC_U1_MIN, LDC_U2_MIN,
+])
+PRIOR_MAXS = np.array([
+    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
+    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
+    P_ROT_MAX,
+    PLANET_RADIUS_MAX, SEMI_MAJOR_MAX, INCLINATION_MAX,
+    ECCENTRICITY_MAX, ARG_PERIAPSIS_MAX, P_ORB_MAX,
+    LDC_U1_MAX, LDC_U2_MAX,
+])
 
 # ---------------------------------------------------------------------------
 # Pre-build the Static Model for MCMC (Two-Stage API)
@@ -274,14 +314,14 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     fac_flux = numpyro.sample("fac_flux", dist.Uniform(FLUX_MIN, FLUX_MAX))
 
     P_rot = numpyro.sample("p_rot", dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0))
-    LDC_u1 = numpyro.sample("ldc_u1", dist.Uniform(LDC_U1_MIN, LDC_U1_MAX))
-    LDC_u2 = numpyro.sample("ldc_u2", dist.Uniform(LDC_U2_MIN, LDC_U2_MAX))
+    LDC_u1 = numpyro.sample("ldc_u1", dist.Normal(0.0, 5.0))
+    LDC_u2 = numpyro.sample("ldc_u2", dist.Normal(0.0, 5.0))
 
     # Planet parameters
     planet_radius = numpyro.sample("planet_radius", dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5))
     semimajor_axis = numpyro.sample("semimajor_axis", dist.LogNormal(jnp.log(5.0), 0.5))
     inclination = numpyro.sample("inclination", dist.Uniform(INCLINATION_MIN, INCLINATION_MAX))
-    eccentricity = numpyro.sample("eccentricity", dist.Beta(2, 10))
+    eccentricity = numpyro.sample("eccentricity", dist.Beta(1, 5))
     arg_periapsis = numpyro.sample("arg_periapsis", dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX))
     P_orb = numpyro.sample("P_orb", dist.Normal(TRUE_P_ORB, 0.01))
 

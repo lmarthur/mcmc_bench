@@ -21,6 +21,7 @@ import jaxns
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import numpyro.distributions as dist
 import tensorflow_probability.substrates.jax as tfp
 
 from model import (
@@ -32,22 +33,31 @@ from model import (
     GROUND_TRUTH,
     TIMES,
     OBS_LIGHT_CURVE,
-    TRUE_P_ROT, TRUE_PLANET_RADIUS,
-    LAT_MIN, LAT_MAX, LONG_MIN, LONG_MAX, SIZE_MIN, SIZE_MAX,
-    FLUX_MIN, FLUX_MAX, P_ROT_MIN, P_ROT_MAX, LDC_U1_MIN, LDC_U1_MAX,
-    LDC_U2_MIN, LDC_U2_MAX, PLANET_RADIUS_MIN, PLANET_RADIUS_MAX,
-    SEMI_MAJOR_MIN, SEMI_MAJOR_MAX, INCLINATION_MIN, INCLINATION_MAX,
-    ECCENTRICITY_MIN, ECCENTRICITY_MAX, ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX,
-    P_ORB_MIN, P_ORB_MAX,
+    PRIOR_DISTRIBUTIONS,
 )
 
 tfpd = tfp.distributions
+
+
+def _numpyro_to_tfp(d):
+    if isinstance(d, dist.Uniform):
+        return tfpd.Uniform(low=d.low, high=d.high)
+    elif isinstance(d, dist.LogNormal):
+        return tfpd.LogNormal(loc=d.loc, scale=d.scale)
+    elif isinstance(d, dist.Normal):
+        return tfpd.Normal(loc=d.loc, scale=d.scale)
+    elif isinstance(d, dist.Beta):
+        return tfpd.Beta(
+            concentration1=jnp.float64(d.concentration1),
+            concentration0=jnp.float64(d.concentration0),
+        )
+    raise TypeError(f"No TFP equivalent known for {type(d)}")
 
 NS_OUTPUT_DIR = OUTPUT_DIR / "ns"
 
 MAX_SAMPLES = 1e5
 NUM_POSTERIOR_DRAWS = 5000
-NUM_LIVE_POINTS = 500
+NUM_LIVE_POINTS = 100
 
 
 def main(seed=0, save_outputs=True):
@@ -60,35 +70,12 @@ def main(seed=0, save_outputs=True):
         plot_model(filename="sajax_ground_truth.png")
 
     # --- Define JAXNS prior and likelihood ---
-    # Parameter order must match PARAM_NAMES / the flat array expected by log_density_fn:
-    # [spot_lat, spot_long, spot_size, spot_flux,
-    #  fac_lat,  fac_long,  fac_size,  fac_flux,
-    #  p_rot, planet_radius, semimajor_axis, inclination,
-    #  eccentricity, arg_periapsis, P_orb, ldc_u1, ldc_u2]
     def prior_model():
-        spot_lat      = yield jaxns.Prior(tfpd.Uniform(low=LAT_MIN,            high=LAT_MAX),            name="spot_lat")
-        spot_long     = yield jaxns.Prior(tfpd.Uniform(low=LONG_MIN,           high=LONG_MAX),           name="spot_long")
-        spot_size     = yield jaxns.Prior(tfpd.Uniform(low=SIZE_MIN,           high=SIZE_MAX),           name="spot_size")
-        spot_flux     = yield jaxns.Prior(tfpd.Uniform(low=FLUX_MIN,           high=FLUX_MAX),           name="spot_flux")
-        fac_lat       = yield jaxns.Prior(tfpd.Uniform(low=LAT_MIN,            high=LAT_MAX),            name="fac_lat")
-        fac_long      = yield jaxns.Prior(tfpd.Uniform(low=LONG_MIN,           high=LONG_MAX),           name="fac_long")
-        fac_size      = yield jaxns.Prior(tfpd.Uniform(low=SIZE_MIN,           high=SIZE_MAX),           name="fac_size")
-        fac_flux      = yield jaxns.Prior(tfpd.Uniform(low=FLUX_MIN,           high=FLUX_MAX),           name="fac_flux")
-        p_rot         = yield jaxns.Prior(tfpd.LogNormal(loc=jnp.log(TRUE_P_ROT),      scale=1.0),      name="p_rot")
-        planet_radius = yield jaxns.Prior(tfpd.LogNormal(loc=jnp.log(TRUE_PLANET_RADIUS), scale=0.5),   name="planet_radius")
-        semimajor     = yield jaxns.Prior(tfpd.LogNormal(loc=jnp.log(5.0),     scale=0.5),              name="semimajor_axis")
-        inclination   = yield jaxns.Prior(tfpd.Uniform(low=INCLINATION_MIN,    high=INCLINATION_MAX),    name="inclination")
-        eccentricity  = yield jaxns.Prior(tfpd.Beta(concentration0=jnp.float64(10.0), concentration1=jnp.float64(2.0)), name="eccentricity")
-        arg_periapsis = yield jaxns.Prior(tfpd.Uniform(low=ARG_PERIAPSIS_MIN,  high=ARG_PERIAPSIS_MAX),  name="arg_periapsis")
-        P_orb         = yield jaxns.Prior(tfpd.Normal(loc=1.0,                 scale=0.01),              name="P_orb")
-        ldc_u1        = yield jaxns.Prior(tfpd.Uniform(low=LDC_U1_MIN,         high=LDC_U1_MAX),         name="ldc_u1")
-        ldc_u2        = yield jaxns.Prior(tfpd.Uniform(low=LDC_U2_MIN,         high=LDC_U2_MAX),         name="ldc_u2")
-        return jnp.stack([
-            spot_lat, spot_long, spot_size, spot_flux,
-            fac_lat,  fac_long,  fac_size,  fac_flux,
-            p_rot, planet_radius, semimajor, inclination,
-            eccentricity, arg_periapsis, P_orb, ldc_u1, ldc_u2,
-        ])
+        samples = []
+        for name, d in PRIOR_DISTRIBUTIONS.items():
+            val = yield jaxns.Prior(_numpyro_to_tfp(d), name=name)
+            samples.append(val)
+        return jnp.stack(samples)
 
     def log_likelihood(x):
         return log_density_fn(x)
@@ -118,12 +105,7 @@ def main(seed=0, save_outputs=True):
     )
 
     # Stack into (1, NUM_POSTERIOR_DRAWS, NDIM) — single pseudo-chain for ArviZ
-    param_arrays = [np.array(uniform_samples[name]) for name in [
-        "spot_lat", "spot_long", "spot_size", "spot_flux",
-        "fac_lat",  "fac_long",  "fac_size",  "fac_flux",
-        "p_rot", "planet_radius", "semimajor_axis", "inclination",
-        "eccentricity", "arg_periapsis", "P_orb", "ldc_u1", "ldc_u2",
-    ]]
+    param_arrays = [np.array(uniform_samples[name]) for name in PRIOR_DISTRIBUTIONS.keys()]
     samples_nd = np.stack(param_arrays, axis=-1)[None, :, :]  # (1, NUM_POSTERIOR_DRAWS, 17)
 
     # --- Diagnostics ---
