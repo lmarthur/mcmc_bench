@@ -1,10 +1,14 @@
 """
-Run Random Walk Metropolis-Hastings on the SAJAX planet+activity model and save outputs.
+Run DEO (non-reversible) parallel tempering on the SAJAX planet+activity model and save outputs.
+
+DEO uses a deterministic even-odd parity schedule for swap moves, which is
+non-reversible and achieves a round-trip rate independent of the number of chains.
 """
 
 import json
 import sys
 import time
+import logging
 import warnings
 from pathlib import Path
 
@@ -14,10 +18,13 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore", FutureWarning)
     import arviz as az
 import blackjax
+import blackjax.mcmc.random_walk
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import numpyro.distributions as dist
+import pt_jax
 
 from model import (
     make_log_density,
@@ -31,14 +38,40 @@ from model import (
     PRIOR_DISTRIBUTIONS,
 )
 
-RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
+DEO_OUTPUT_DIR = OUTPUT_DIR / "deo"
 
-NDIM = len(PARAM_NAMES)
-NUM_BURNIN = 5000
-NUM_SAMPLES = 20000
-NUM_CHAINS = 16
-# Roberts, Gelman & Gilks (1997): 2.38/sqrt(d) targets ~23.4% acceptance
-STEP_SIZE = 2.38 / np.sqrt(NDIM)  # ≈ 0.577 for d=17
+# ===========================================================================
+# Tunable parameters
+# ===========================================================================
+
+# Number of parallel chains (including the reference/hottest chain).
+# More chains → smoother temperature ladder, better mode mixing, higher cost.
+NUM_CHAINS = 17
+
+# Number of warm-up (burn-in) steps discarded before collecting samples.
+NUM_WARMUP = 5000
+
+# Number of posterior samples collected from the cold chain.
+NUM_SAMPLES = 1000
+
+# Step sizes for the local RWMH kernel.
+# STEP_SIZE_HOT: used for the hottest chain (β≈0); needs broad proposals.
+# STEP_SIZE_COLD: used for the coldest chain (β=1, target); tune for ~23% acceptance.
+# Intermediate chains receive linearly interpolated step sizes.
+STEP_SIZE_HOT = 2.0
+STEP_SIZE_COLD = 0.3
+
+# Scale of the reference distribution (independent Normal per dimension).
+# Each parameter's σ is set to REF_SCALE_FRACTION × (prior std dev).
+# Increase if the reference fails to cover the prior; decrease to concentrate it.
+REF_SCALE_FRACTION = 0.5
+
+# Base for the geometric temperature ladder: β_k = base^{-(N-1-k)}, β_{N-1}=1.
+# Larger base → wider spacing between adjacent temperatures (higher swap rejection).
+# Smaller base → more chains needed to span the same range.
+ANNEALING_BASE = 1.4142135623730951  # sqrt(2), the pt_jax default
+
+# ===========================================================================
 
 
 def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
@@ -52,20 +85,25 @@ def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
     return jnp.stack(positions, axis=-1)
 
 
-def inference_loop(rng_key, kernel, initial_state, num_samples):
-    @jax.jit
-    def one_step(state, rng_key):
-        state, info = kernel(rng_key, state)
-        return state, (state, info)
+def rwmh_kernel_generator(log_p, step_size):
+    rmh = blackjax.rmh(
+        log_p,
+        proposal_generator=blackjax.mcmc.random_walk.normal(sigma=step_size),
+    )
 
-    keys = jax.random.split(rng_key, num_samples)
-    _, (states, infos) = jax.lax.scan(one_step, initial_state, keys)
-    return states, infos
+    def kernel(key, position):
+        state = rmh.init(position)
+        new_state, _ = rmh.step(key, state)
+        return new_state.position
+
+    return kernel
 
 
 def main(seed: int = 0, save_outputs: bool = True):
-    init_key, burnin_key, sample_key = jax.random.split(jax.random.PRNGKey(seed), 3)
+    init_key, sample_key = jax.random.split(jax.random.PRNGKey(seed))
     _print = print if save_outputs else lambda *a, **kw: None
+
+    ndim = len(PARAM_NAMES)
 
     # --- Model ---
     log_density_fn = make_log_density()
@@ -74,64 +112,88 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     t0 = time.perf_counter()
 
-    # --- Initialise chains from prior ---
-    initial_positions = get_initial_positions(init_key, NUM_CHAINS)
+    # --- Reference distribution: diagonal Normal, σ = REF_SCALE_FRACTION × prior std ---
+    ref_scales = jnp.array([
+        float(jnp.sqrt(PRIOR_DISTRIBUTIONS[
+            name.lower() if name.startswith("LDC") else name
+        ].variance))
+        for name in PARAM_NAMES
+    ]) * REF_SCALE_FRACTION
 
-    kernel = blackjax.rmh(
-        log_density_fn,
-        proposal_generator=blackjax.mcmc.random_walk.normal(sigma=STEP_SIZE),
+    def log_ref(x):
+        return dist.Normal(jnp.zeros(ndim), ref_scales).to_event().log_prob(x)
+
+    # --- Temperature schedule ---
+    betas = pt_jax.annealing.annealing_exponential(NUM_CHAINS, base=ANNEALING_BASE)
+
+    # --- Build kernels ---
+    step_sizes = jnp.linspace(STEP_SIZE_HOT, STEP_SIZE_COLD, NUM_CHAINS)
+
+    K_ind = pt_jax.kernels.generate_independent_annealed_kernel(
+        log_prob=log_density_fn,
+        log_ref=log_ref,
+        annealing_schedule=betas,
+        kernel_generator=rwmh_kernel_generator,
+        params=step_sizes,
     )
-    init_fn = jax.vmap(kernel.init)
-    initial_states = init_fn(initial_positions)
+    K_deo = pt_jax.swap.generate_deo_extended_kernel(
+        log_prob=log_density_fn,
+        log_ref=log_ref,
+        annealing_schedule=betas,
+    )
 
-    @jax.vmap
-    def run_chain(rng_key, initial_state):
-        return inference_loop(rng_key, kernel.step, initial_state, NUM_BURNIN)
+    # --- Initialise chains from prior ---
+    x0 = get_initial_positions(init_key, NUM_CHAINS)
 
-    # --- Burn-in ---
-    if NUM_BURNIN > 0:
-        _print(f"Running burn-in ({NUM_BURNIN} steps, {NUM_CHAINS} chains)...")
-        burnin_keys = jax.random.split(burnin_key, NUM_CHAINS)
-        burnin_states, _ = run_chain(burnin_keys, initial_states)
-        post_burnin_states = jax.tree.map(lambda x: x[:, -1], burnin_states)
-    else:
-        post_burnin_states = initial_states
+    # --- Run DEO sampling loop ---
+    _print(f"Running DEO (RWMH local kernel, {NUM_CHAINS} chains, "
+           f"{NUM_SAMPLES} samples, {NUM_WARMUP} warmup, {ndim} params)...")
 
-    # --- Sample ---
-    _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains, {NDIM} params)...")
+    samples, rejection_rates = pt_jax.swap.deo_sampling_loop(
+        key=sample_key,
+        x0=x0,
+        kernel_local=K_ind,
+        kernel_deo=K_deo,
+        n_samples=NUM_SAMPLES,
+        warmup=NUM_WARMUP,
+    )
+    # samples:         (NUM_SAMPLES, NUM_CHAINS, NDIM)
+    # rejection_rates: (NUM_SAMPLES, NUM_CHAINS - 1)
 
-    @jax.vmap
-    def run_sample_chain(rng_key, initial_state):
-        return inference_loop(rng_key, kernel.step, initial_state, NUM_SAMPLES)
+    wall_time_s = time.perf_counter() - t0
 
-    chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
-    all_states, all_infos = run_sample_chain(chain_sample_keys, post_burnin_states)
-
-    # all_states.position: (NUM_CHAINS, NUM_SAMPLES, NDIM)
-    samples = np.array(all_states.position)
+    # Cold chain (β=1, target distribution) is the last chain.
+    cold_samples = np.array(samples[:, -1, :])  # (NUM_SAMPLES, NDIM)
+    mean_swap_rejection = np.array(rejection_rates.mean(axis=0))  # (NUM_CHAINS - 1,)
 
     # --- Diagnostics ---
-    acceptance = float(np.mean(np.array(all_infos.acceptance_rate)))
-    total_log_density_evals = NUM_CHAINS * (NUM_BURNIN + NUM_SAMPLES)
+    total_log_density_evals = NUM_CHAINS * (NUM_WARMUP + NUM_SAMPLES)
 
-    # ArviZ summary
-    posterior_dict = {PARAM_NAMES[i]: samples[:, :, i] for i in range(NDIM)}
+    posterior_dict = {PARAM_NAMES[i]: cold_samples[None, :, i] for i in range(ndim)}
+    _az_log = logging.getLogger("arviz")
+    _az_prev = _az_log.level
+    if not save_outputs:
+        _az_log.setLevel(logging.ERROR)
     idata = az.from_dict(
         posterior=posterior_dict,
-        sample_stats={"acceptance_rate": np.array(all_infos.acceptance_rate)},
+        sample_stats={"swap_rejection_rate": np.mean(mean_swap_rejection)},
     )
     summary = az.summary(idata)
-    total_bulk_ess = summary["ess_bulk"].sum()
+    _az_log.setLevel(_az_prev)
+
+    total_bulk_ess = float(summary["ess_bulk"].sum())
     ess_per_logp_eval = total_bulk_ess / total_log_density_evals
 
-    # Parameter recovery vs ground truth
     gt_array = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
-    posterior_means = samples.mean(axis=(0, 1))  # mean over chains and samples
+    posterior_means = cold_samples.mean(axis=0)
     param_bias = posterior_means - gt_array
 
     _print("\n=== Diagnostics ===")
-    _print(f"  Mean acceptance rate:          {acceptance:.3f}")
     _print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
+    _print()
+    _print("  Mean per-pair swap rejection rates:")
+    for i, r in enumerate(mean_swap_rejection):
+        _print(f"    chain {i} <-> {i+1}  (beta {betas[i]:.4f} <-> {betas[i+1]:.4f}): {r:.3f}")
     _print()
     _print("  Parameter recovery (posterior mean vs ground truth):")
     for name, pm, gt, bias in zip(PARAM_NAMES, posterior_means, gt_array, param_bias):
@@ -142,19 +204,22 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print()
     _print(f"  Total bulk ESS: {total_bulk_ess:.1f}")
     _print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
-
-    wall_time_s = time.perf_counter() - t0
     _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
 
     # --- Results ---
     diagnostics = {
-        "sampler": "RandomWalkMetropolisHastings",
+        "sampler": "DEO_ParallelTempering",
         "num_chains": NUM_CHAINS,
-        "num_warmup": NUM_BURNIN,
+        "num_warmup": NUM_WARMUP,
         "num_samples": NUM_SAMPLES,
-        "ndim": NDIM,
-        "step_size": float(STEP_SIZE),
-        "mean_acceptance_rate": float(acceptance),
+        "ndim": ndim,
+        "step_size_hot": float(STEP_SIZE_HOT),
+        "step_size_cold": float(STEP_SIZE_COLD),
+        "annealing_base": float(ANNEALING_BASE),
+        "ref_scale_fraction": float(REF_SCALE_FRACTION),
+        "beta_schedule": np.array(betas).tolist(),
+        "step_sizes": np.array(step_sizes).tolist(),
+        "mean_swap_rejection_rates": mean_swap_rejection.tolist(),
         "total_log_density_evals": int(total_log_density_evals),
         "wall_time_s": float(wall_time_s),
         "total_bulk_ess": float(total_bulk_ess),
@@ -166,12 +231,12 @@ def main(seed: int = 0, save_outputs: bool = True):
     }
 
     if save_outputs:
-        RWMH_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        idata.to_netcdf(str(RWMH_OUTPUT_DIR / "idata.nc"))
-        diag_path = RWMH_OUTPUT_DIR / "diagnostics.json"
+        DEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        idata.to_netcdf(str(DEO_OUTPUT_DIR / "idata.nc"))
+        diag_path = DEO_OUTPUT_DIR / "diagnostics.json"
         with open(diag_path, "w") as f:
             json.dump(diagnostics, f, indent=2)
-        _print(f"\nSaved idata to {RWMH_OUTPUT_DIR / 'idata.nc'}")
+        _print(f"\nSaved idata to {DEO_OUTPUT_DIR / 'idata.nc'}")
         _print(f"Saved diagnostics to {diag_path}")
 
     if not save_outputs:
@@ -182,7 +247,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     # Trace plots for first 6 parameters
     axes = az.plot_trace(idata, var_names=PARAM_NAMES[:6], figsize=(14, 10))
     plt.tight_layout()
-    trace_path = RWMH_OUTPUT_DIR / "traces_subset.png"
+    trace_path = DEO_OUTPUT_DIR / "traces_subset.png"
     plt.savefig(trace_path, dpi=150, bbox_inches="tight")
     plt.close()
     _print(f"Saved trace plot to {trace_path}")
@@ -196,14 +261,13 @@ def main(seed: int = 0, save_outputs: bool = True):
         marginals=True,
         figsize=(24, 24),
     )
-    corner_path = RWMH_OUTPUT_DIR / "corner_all.png"
+    corner_path = DEO_OUTPUT_DIR / "corner_all.png"
     plt.savefig(corner_path, dpi=120, bbox_inches="tight")
     plt.close()
     _print(f"Saved full corner plot to {corner_path}")
 
     # Best-fit light curve using posterior mean
-    mean_params = samples.mean(axis=(0, 1))
-    mean_dict = {name: float(mean_params[i]) for i, name in enumerate(PARAM_NAMES)}
+    mean_dict = {name: float(posterior_means[i]) for i, name in enumerate(PARAM_NAMES)}
 
     lc_bestfit = np.array(
         _call_sajax(
@@ -245,7 +309,6 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
                                          gridspec_kw={"height_ratios": [3, 1]})
-
     ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
                   label="Observations", zorder=1)
     ax_lc.plot(TIMES, lc_true, lw=2, color="steelblue", label="True", zorder=2)
@@ -265,10 +328,26 @@ def main(seed: int = 0, save_outputs: bool = True):
     ax_res.spines["right"].set_visible(False)
 
     fig.tight_layout()
-    lc_path = RWMH_OUTPUT_DIR / "bestfit_lightcurve.png"
+    lc_path = DEO_OUTPUT_DIR / "bestfit_lightcurve.png"
     fig.savefig(lc_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     _print(f"Saved best-fit light curve to {lc_path}")
+
+    # Per-pair swap rejection rates
+    pair_labels = [f"{betas[i]:.3f}↔{betas[i+1]:.3f}" for i in range(NUM_CHAINS - 1)]
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.bar(range(NUM_CHAINS - 1), mean_swap_rejection, color="steelblue", alpha=0.8)
+    ax.set_xticks(range(NUM_CHAINS - 1))
+    ax.set_xticklabels(pair_labels, rotation=45, ha="right", fontsize=7)
+    ax.set_ylabel("Mean rejection rate")
+    ax.set_xlabel("Adjacent chain pair (β values)")
+    ax.set_title("DEO swap rejection rates per adjacent pair")
+    ax.set_ylim(0, 1)
+    fig.tight_layout()
+    swap_path = DEO_OUTPUT_DIR / "swap_rates.png"
+    fig.savefig(swap_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    _print(f"Saved swap rates plot to {swap_path}")
 
     return diagnostics
 

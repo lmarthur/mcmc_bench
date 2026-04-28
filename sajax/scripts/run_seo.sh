@@ -4,8 +4,8 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH -p mit_preemptable
 #SBATCH -G l40s:1
-#SBATCH -o sajax/output/affinv/slurm_%j.out
-#SBATCH -e sajax/output/affinv/slurm_%j.err
+#SBATCH -o sajax/output/seo/slurm_%j.out
+#SBATCH -e sajax/output/seo/slurm_%j.err
 
 module load miniforge
 module load nvhpc
@@ -14,4 +14,4 @@ module load cuda/13.0.1
 source activate base
 conda activate mcmc_bench
 
-python -u sajax/scripts/affinv.py
+python -u sajax/scripts/seo.py
