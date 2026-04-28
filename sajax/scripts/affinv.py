@@ -30,47 +30,25 @@ from model import (
     GROUND_TRUTH,
     TIMES,
     OBS_LIGHT_CURVE,
-    PRIOR_MINS,
-    PRIOR_MAXS,
+    PRIOR_DISTRIBUTIONS,
 )
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 500
-NUM_SAMPLES = 5000
+NUM_BURNIN = 1000
+NUM_SAMPLES = 10000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
 def get_initial_coords(key, num_walkers):
-    """
-    Initialize walkers near the ground truth.
-    Uniform-prior parameters: sample within ±10% of prior range around ground truth.
-    LogNormal/Beta parameters: sample from a tight version of their prior (σ=0.1 in
-    log-space for LogNormal; Uniform(0, 0.1) for eccentricity).
-    """
-    key, base_key, k_prot, k_rp, k_sma, k_ecc = jax.random.split(key, 6)
-
-    center = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
-    width = (PRIOR_MAXS - PRIOR_MINS) * 0.1
-    low = np.maximum(PRIOR_MINS, center - width)
-    high = np.minimum(PRIOR_MAXS, center + width)
-    coords = jax.random.uniform(base_key, shape=(num_walkers, NDIM), minval=low, maxval=high)
-
-    # Override the four parameters whose priors changed from Uniform
-    # idx 8  — p_rot:          LogNormal(ln(true), 1.0)
-    # idx 9  — planet_radius:  LogNormal(ln(true), 0.5)
-    # idx 10 — semimajor_axis: LogNormal(ln(5.0),  0.5)
-    # idx 12 — eccentricity:   Beta(2, 10)
-    coords = coords.at[:, 8].set(
-        jnp.exp(jax.random.normal(k_prot, (num_walkers,)) * 0.1 + jnp.log(center[8])))
-    coords = coords.at[:, 9].set(
-        jnp.exp(jax.random.normal(k_rp,   (num_walkers,)) * 0.1 + jnp.log(center[9])))
-    coords = coords.at[:, 10].set(
-        jnp.exp(jax.random.normal(k_sma,  (num_walkers,)) * 0.1 + jnp.log(5.0)))
-    coords = coords.at[:, 12].set(
-        jax.random.uniform(k_ecc, (num_walkers,), minval=0.0, maxval=0.1))
-
-    return coords
+    """Sample each walker's starting position independently from the prior."""
+    coords = []
+    for name in PARAM_NAMES:
+        key, subkey = jax.random.split(key)
+        prior_key = name.lower() if name.startswith("LDC") else name
+        samples = PRIOR_DISTRIBUTIONS[prior_key].sample(subkey, sample_shape=(num_walkers,))
+        coords.append(samples)
+    return jnp.stack(coords, axis=-1)
 
 def main(seed=0, save_outputs=True):
     init_key, state_key, sample_key = jax.random.split(jax.random.PRNGKey(seed), 3)
