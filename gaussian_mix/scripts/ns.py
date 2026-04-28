@@ -58,12 +58,7 @@ def main(seed=0, save_outputs=True):
         )
         return jnp.stack([x1, x2])
 
-    def log_likelihood(x):
-        # log_density_fn is the full log-prob of the mixture; under a uniform prior
-        # it equals the log-likelihood up to the (constant) prior normalisation.
-        return log_density_fn(x)
-
-    model = jaxns.Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model = jaxns.Model(prior_model=prior_model, log_likelihood=log_density_fn)
     if save_outputs:
         model.sanity_check(jax.random.PRNGKey(1), S=100)
 
