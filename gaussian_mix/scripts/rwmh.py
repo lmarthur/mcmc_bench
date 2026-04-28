@@ -30,7 +30,6 @@ STEP_SIZE = 1.68  # Roberts, Gelman & Gilks (1997): 2.38/sqrt(d) for d=2, target
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
-    @jax.jit
     def one_step(state, rng_key):
         state, info = kernel(rng_key, state)
         return state, (state, info)

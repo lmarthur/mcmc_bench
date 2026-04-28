@@ -30,7 +30,6 @@ NUTS_DEFAULT_STEP_SIZE = 0.5  # used when NUM_WARMUP == 0
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
-    @jax.jit
     def one_step(state, rng_key):
         state, info = kernel(rng_key, state)
         return state, (state, info)
