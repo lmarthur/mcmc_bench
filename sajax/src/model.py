@@ -148,27 +148,11 @@ PRIOR_DISTRIBUTIONS = {
     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
     "eccentricity":  dist.Beta(1, 5),
     "arg_periapsis": dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX),
-    "P_orb":         dist.Normal(TRUE_P_ORB, 0.01),
+    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     "ldc_u1":        dist.Normal(0.0, 5.0),
     "ldc_u2":        dist.Normal(0.0, 5.0),
 }
 
-PRIOR_MINS = np.array([
-    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,
-    LAT_MIN, LONG_MIN, SIZE_MIN, FLUX_MIN,
-    P_ROT_MIN,
-    PLANET_RADIUS_MIN, SEMI_MAJOR_MIN, INCLINATION_MIN,
-    ECCENTRICITY_MIN, ARG_PERIAPSIS_MIN, P_ORB_MIN,
-    LDC_U1_MIN, LDC_U2_MIN,
-])
-PRIOR_MAXS = np.array([
-    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-    LAT_MAX, LONG_MAX, SIZE_MAX, FLUX_MAX,
-    P_ROT_MAX,
-    PLANET_RADIUS_MAX, SEMI_MAJOR_MAX, INCLINATION_MAX,
-    ECCENTRICITY_MAX, ARG_PERIAPSIS_MAX, P_ORB_MAX,
-    LDC_U1_MAX, LDC_U2_MAX,
-])
 
 # ---------------------------------------------------------------------------
 # Pre-build the Static Model for MCMC (Two-Stage API)
