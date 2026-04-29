@@ -2,7 +2,6 @@
 Run Affine Invariant MCMC on the sajax planet+activity model.
 """
 
-import json
 import sys
 import time
 import warnings
@@ -36,7 +35,7 @@ from model import (
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
 NUM_BURNIN = 1000
-NUM_SAMPLES = 10000
+NUM_SAMPLES = 2000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
@@ -135,6 +134,8 @@ def main(seed=0, save_outputs=True):
         # 3. Best-fit light curve using posterior mean
         mean_params = samples.mean(axis=(0, 1))
         mean_dict = {name: float(mean_params[i]) for i, name in enumerate(PARAM_NAMES)}
+        mean_ecc = mean_dict["ecc_h"]**2 + mean_dict["ecc_k"]**2
+        mean_omega = float(np.arctan2(mean_dict["ecc_k"], mean_dict["ecc_h"]))
 
         lc_bestfit = np.array(
             _call_sajax(
@@ -147,14 +148,16 @@ def main(seed=0, save_outputs=True):
                 mean_dict["planet_radius"],
                 mean_dict["semimajor_axis"],
                 np.deg2rad(mean_dict["inclination"]),
-                mean_dict["eccentricity"],
-                mean_dict["arg_periapsis"],
+                mean_ecc,
+                mean_omega,
                 mean_dict["P_orb"],
                 mean_dict["LDC_u1"],
                 mean_dict["LDC_u2"],
             )["lc"]
         )
 
+        gt_ecc = GROUND_TRUTH["ecc_h"]**2 + GROUND_TRUTH["ecc_k"]**2
+        gt_omega = float(np.arctan2(GROUND_TRUTH["ecc_k"], GROUND_TRUTH["ecc_h"]))
         lc_true = np.array(
             _call_sajax(
                 TIMES,
@@ -166,8 +169,8 @@ def main(seed=0, save_outputs=True):
                 GROUND_TRUTH["planet_radius"],
                 GROUND_TRUTH["semimajor_axis"],
                 np.deg2rad(GROUND_TRUTH["inclination"]),
-                GROUND_TRUTH["eccentricity"],
-                GROUND_TRUTH["arg_periapsis"],
+                gt_ecc,
+                gt_omega,
                 GROUND_TRUTH["P_orb"],
                 GROUND_TRUTH["LDC_u1"],
                 GROUND_TRUTH["LDC_u2"],
