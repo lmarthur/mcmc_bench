@@ -2,21 +2,24 @@
 Unit tests for gaussian_mix/src/model.py
 """
 
+import importlib.util
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from model import (
-    DEFAULT_MEANS,
-    DEFAULT_SCALES,
-    DEFAULT_WEIGHTS,
-    make_log_density,
-)
+_src = Path(__file__).parent.parent.parent / "gaussian_mix" / "src" / "model.py"
+_spec = importlib.util.spec_from_file_location("gaussian_mix.model", _src)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["gaussian_mix.model"] = _mod
+_spec.loader.exec_module(_mod)
+
+DEFAULT_MEANS = _mod.DEFAULT_MEANS
+DEFAULT_SCALES = _mod.DEFAULT_SCALES
+DEFAULT_WEIGHTS = _mod.DEFAULT_WEIGHTS
+make_log_density = _mod.make_log_density
 
 
 def test_default_weights_sum_to_one():

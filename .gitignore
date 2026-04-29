@@ -24,3 +24,6 @@ jax_cache/
 # SLURM sbatch outputs
 *.out
 *.err
+
+# Diagnostic figures
+tests/output/*.png

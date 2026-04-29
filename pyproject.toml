@@ -32,7 +32,7 @@ addopts = "--cov --cov-report=term-missing"
 include = ["*/src/*"]
 
 [tool.coverage.report]
-fail_under = 50
+fail_under = 75
 
 [project.optional-dependencies]
 cpu = ["jax[cpu]", "jaxlib"]
