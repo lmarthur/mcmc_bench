@@ -44,8 +44,7 @@ def get_initial_coords(key, num_walkers):
     coords = []
     for name in PARAM_NAMES:
         key, subkey = jax.random.split(key)
-        prior_key = name.lower() if name.startswith("LDC") else name
-        samples = PRIOR_DISTRIBUTIONS[prior_key].sample(subkey, sample_shape=(num_walkers,))
+        samples = PRIOR_DISTRIBUTIONS[name].sample(subkey, sample_shape=(num_walkers,))
         coords.append(samples)
     return jnp.stack(coords, axis=-1)
 
@@ -136,6 +135,8 @@ def main(seed=0, save_outputs=True):
         mean_dict = {name: float(mean_params[i]) for i, name in enumerate(PARAM_NAMES)}
         mean_ecc = mean_dict["ecc_h"]**2 + mean_dict["ecc_k"]**2
         mean_omega = float(np.arctan2(mean_dict["ecc_k"], mean_dict["ecc_h"]))
+        mean_u1 = 2 * np.sqrt(mean_dict["ldc_q1"]) * mean_dict["ldc_q2"]
+        mean_u2 = np.sqrt(mean_dict["ldc_q1"]) * (1 - 2 * mean_dict["ldc_q2"])
 
         lc_bestfit = np.array(
             _call_sajax(
@@ -151,13 +152,15 @@ def main(seed=0, save_outputs=True):
                 mean_ecc,
                 mean_omega,
                 mean_dict["P_orb"],
-                mean_dict["LDC_u1"],
-                mean_dict["LDC_u2"],
+                mean_u1,
+                mean_u2,
             )["lc"]
         )
 
         gt_ecc = GROUND_TRUTH["ecc_h"]**2 + GROUND_TRUTH["ecc_k"]**2
         gt_omega = float(np.arctan2(GROUND_TRUTH["ecc_k"], GROUND_TRUTH["ecc_h"]))
+        gt_u1 = 2 * np.sqrt(GROUND_TRUTH["ldc_q1"]) * GROUND_TRUTH["ldc_q2"]
+        gt_u2 = np.sqrt(GROUND_TRUTH["ldc_q1"]) * (1 - 2 * GROUND_TRUTH["ldc_q2"])
         lc_true = np.array(
             _call_sajax(
                 TIMES,
@@ -172,8 +175,8 @@ def main(seed=0, save_outputs=True):
                 gt_ecc,
                 gt_omega,
                 GROUND_TRUTH["P_orb"],
-                GROUND_TRUTH["LDC_u1"],
-                GROUND_TRUTH["LDC_u2"],
+                gt_u1,
+                gt_u2,
             )["lc"]
         )
 

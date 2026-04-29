@@ -113,8 +113,6 @@ LONG_MIN, LONG_MAX = 0.0, 360.0
 SIZE_MIN, SIZE_MAX = 1.0, 90.0
 FLUX_MIN, FLUX_MAX = 0.1, 2.0
 P_ROT_MIN, P_ROT_MAX = 0.1, 5.0
-LDC_U1_MIN, LDC_U1_MAX = 0.0, 1.0
-LDC_U2_MIN, LDC_U2_MAX = 0.0, 1.0
 
 # ---------------------------------------------------------------------------
 # Prior bounds: planet transit
@@ -145,8 +143,8 @@ PRIOR_DISTRIBUTIONS = {
     "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
     "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    "ldc_u1":        dist.Normal(0.0, 5.0),
-    "ldc_u2":        dist.Normal(0.0, 5.0),
+    "ldc_q1":        dist.Uniform(0.0, 1.0),
+    "ldc_q2":        dist.Uniform(0.0, 1.0),
 }
 
 
@@ -294,8 +292,10 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     fac_flux = numpyro.sample("fac_flux", PRIOR_DISTRIBUTIONS["fac_flux"])
 
     P_rot = numpyro.sample("p_rot", PRIOR_DISTRIBUTIONS["p_rot"])
-    LDC_u1 = numpyro.sample("ldc_u1", PRIOR_DISTRIBUTIONS["ldc_u1"])
-    LDC_u2 = numpyro.sample("ldc_u2", PRIOR_DISTRIBUTIONS["ldc_u2"])
+    ldc_q1 = numpyro.sample("ldc_q1", PRIOR_DISTRIBUTIONS["ldc_q1"])
+    ldc_q2 = numpyro.sample("ldc_q2", PRIOR_DISTRIBUTIONS["ldc_q2"])
+    LDC_u1 = numpyro.deterministic("ldc_u1", 2 * jnp.sqrt(ldc_q1) * ldc_q2)
+    LDC_u2 = numpyro.deterministic("ldc_u2", jnp.sqrt(ldc_q1) * (1 - 2 * ldc_q2))
 
     # Planet parameters
     planet_radius = numpyro.sample("planet_radius", PRIOR_DISTRIBUTIONS["planet_radius"])
@@ -384,7 +384,7 @@ def make_log_density(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STA
              p_rot,
              planet_radius, semimajor_axis, inclination (degrees),
              ecc_h, ecc_k, P_orb,
-             ldc_u1, ldc_u2]
+             ldc_q1, ldc_q2]
     """
     y_obs_jnp = jnp.array(y_obs)
 
@@ -405,8 +405,8 @@ def make_log_density(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STA
             "ecc_h": x[12],
             "ecc_k": x[13],
             "P_orb": x[14],
-            "ldc_u1": x[15],
-            "ldc_u2": x[16],
+            "ldc_q1": x[15],
+            "ldc_q2": x[16],
         }
         ld, _ = log_density(
             sajax_model,
@@ -438,8 +438,8 @@ GROUND_TRUTH = {
     "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
     "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
     "P_orb": TRUE_P_ORB,
-    "LDC_u1": TRUE_LDC_U1,
-    "LDC_u2": TRUE_LDC_U2,
+    "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
+    "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
 }
 
 PARAM_NAMES = list(GROUND_TRUTH.keys())
@@ -456,8 +456,6 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
       - The transit component alone
       - The activity component alone
     """
-    log_density_fn = make_log_density()
-
     #Activity only
     lc_activity = np.array(
         _call_sajax(

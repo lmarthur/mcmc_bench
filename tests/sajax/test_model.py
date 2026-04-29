@@ -41,8 +41,8 @@ sajax_model = _mod.sajax_model
 
 # ---------------------------------------------------------------------------
 # Ground-truth parameter vector matching the 17-element ordering in
-# make_log_density. Inclination is in degrees; ecc_h/ecc_k are in the
-# reparameterized space (√e·cos(ω), √e·sin(ω)).
+# make_log_density. Inclination is in degrees; ecc_h/ecc_k and ldc_q1/q2
+# are in the reparameterized spaces.
 # ---------------------------------------------------------------------------
 GT_VECTOR = jnp.array([
     GROUND_TRUTH["spot_lat"],
@@ -60,8 +60,8 @@ GT_VECTOR = jnp.array([
     GROUND_TRUTH["ecc_h"],
     GROUND_TRUTH["ecc_k"],
     GROUND_TRUTH["P_orb"],
-    GROUND_TRUTH["LDC_u1"],
-    GROUND_TRUTH["LDC_u2"],
+    GROUND_TRUTH["ldc_q1"],
+    GROUND_TRUTH["ldc_q2"],
 ])
 
 
@@ -74,7 +74,7 @@ def _sample_prior_vector(seed: int = 0) -> jnp.ndarray:
         "p_rot",
         "planet_radius", "semimajor_axis", "inclination",
         "ecc_h", "ecc_k", "P_orb",
-        "ldc_u1", "ldc_u2",
+        "ldc_q1", "ldc_q2",
     ]
     key = jax.random.PRNGKey(int(rng.integers(0, 2**31 - 1)))
     keys = jax.random.split(key, len(key_order))
@@ -199,6 +199,7 @@ def test_ground_truth_residuals_at_noise_level():
     std indicates the one-shot forward model does not round-trip correctly."""
     ecc_h = GROUND_TRUTH["ecc_h"]
     ecc_k = GROUND_TRUTH["ecc_k"]
+    q1, q2 = GROUND_TRUTH["ldc_q1"], GROUND_TRUTH["ldc_q2"]
     result = _call_sajax(
         TIMES,
         jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
@@ -213,8 +214,8 @@ def test_ground_truth_residuals_at_noise_level():
         ecc_h**2 + ecc_k**2,
         float(np.arctan2(ecc_k, ecc_h)),
         GROUND_TRUTH["P_orb"],
-        GROUND_TRUTH["LDC_u1"],
-        GROUND_TRUTH["LDC_u2"],
+        2 * np.sqrt(q1) * q2,
+        np.sqrt(q1) * (1 - 2 * q2),
     )
     lc_reconstructed = np.array(result["lc"])
     residuals = OBS_LIGHT_CURVE - lc_reconstructed
@@ -242,8 +243,8 @@ def test_two_stage_residuals_at_noise_level():
     fac_size      = gt["fac_size"]
     fac_flux      = gt["fac_flux"]
     P_rot         = gt["p_rot"]
-    LDC_u1        = gt["LDC_u1"]
-    LDC_u2        = gt["LDC_u2"]
+    LDC_u1        = 2 * np.sqrt(gt["ldc_q1"]) * gt["ldc_q2"]
+    LDC_u2        = np.sqrt(gt["ldc_q1"]) * (1 - 2 * gt["ldc_q2"])
     planet_radius = gt["planet_radius"]
     semimajor     = gt["semimajor_axis"]
     inclination   = jnp.deg2rad(gt["inclination"])
@@ -326,6 +327,7 @@ def test_call_sajax_activity_only_runs():
     NaN propagation in the no-planet edge case."""
     _ecc_h = GROUND_TRUTH["ecc_h"]
     _ecc_k = GROUND_TRUTH["ecc_k"]
+    _q1, _q2 = GROUND_TRUTH["ldc_q1"], GROUND_TRUTH["ldc_q2"]
     result = _call_sajax(
         TIMES,
         jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
@@ -340,8 +342,8 @@ def test_call_sajax_activity_only_runs():
         _ecc_h**2 + _ecc_k**2,
         float(np.arctan2(_ecc_k, _ecc_h)),
         GROUND_TRUTH["P_orb"],
-        GROUND_TRUTH["LDC_u1"],
-        GROUND_TRUTH["LDC_u2"],
+        2 * np.sqrt(_q1) * _q2,
+        np.sqrt(_q1) * (1 - 2 * _q2),
     )
     lc = np.array(result["lc"])
     assert lc.shape == TIMES.shape
@@ -368,6 +370,7 @@ def test_plot_api_comparison():
     # One-shot API
     _ecc_h = gt["ecc_h"]
     _ecc_k = gt["ecc_k"]
+    _q1, _q2 = gt["ldc_q1"], gt["ldc_q2"]
     lc_one_shot = np.array(_call_sajax(
         TIMES,
         jnp.array([gt["spot_lat"], gt["fac_lat"]]),
@@ -381,14 +384,14 @@ def test_plot_api_comparison():
         _ecc_h**2 + _ecc_k**2,
         float(np.arctan2(_ecc_k, _ecc_h)),
         gt["P_orb"],
-        gt["LDC_u1"],
-        gt["LDC_u2"],
+        2 * np.sqrt(_q1) * _q2,
+        np.sqrt(_q1) * (1 - 2 * _q2),
     )["lc"])
 
     # Two-stage API (replicating sajax_model compute path)
     P_rot         = gt["p_rot"]
-    LDC_u1        = gt["LDC_u1"]
-    LDC_u2        = gt["LDC_u2"]
+    LDC_u1        = 2 * np.sqrt(gt["ldc_q1"]) * gt["ldc_q2"]
+    LDC_u2        = np.sqrt(gt["ldc_q1"]) * (1 - 2 * gt["ldc_q2"])
     planet_radius = gt["planet_radius"]
     semimajor     = gt["semimajor_axis"]
     inclination   = jnp.deg2rad(gt["inclination"])
