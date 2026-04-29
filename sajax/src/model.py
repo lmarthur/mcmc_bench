@@ -36,14 +36,10 @@ OUTPUT_DIR = Path(__file__).parent.parent / "output"
 # ---------------------------------------------------------------------------
 # Planet transit parameters (jaxoplanet)
 # ---------------------------------------------------------------------------
-#%%%% Define G in units needed now to avoid JAX tracing issues
-G_solar_units = G.to(u.Rsun**3 / (u.Msun * u.day**2)).value
-R_star = (1.0 * u.R_sun).value
-
-TRUE_PLANET_RADIUS = 0.1        
-TRUE_P_ORB         = 1.0        
-A_METERS           = ( (G.value * (1.0 * u.M_sun).to(u.kg).value * (TRUE_P_ORB * 24 * 3600)**2)/(4 * jnp.pi**2) )**(1/3)           
-TRUE_SEMI_MAJOR    = A_METERS / (1.0 * u.R_sun).to(u.m).value 
+TRUE_PLANET_RADIUS = 0.1
+TRUE_P_ORB         = 1.0
+A_METERS           = ( (G.value * (1.0 * u.M_sun).to(u.kg).value * (TRUE_P_ORB * 24 * 3600)**2)/(4 * jnp.pi**2) )**(1/3)
+TRUE_SEMI_MAJOR    = A_METERS / (1.0 * u.R_sun).to(u.m).value
 TRUE_INCLINATION   = jnp.deg2rad(90.0)       
 TRUE_ECCENTRICITY  = 0.0        
 TRUE_ARG_PERIAPSIS = 0.0        
@@ -55,7 +51,7 @@ TRUE_T0_TRANSIT    = 0.0
 # Convert angles to radians
 # Impact parameter (eccentricity-corrected)
 TRUE_IMPACT_PARAM = (
-    (TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)) / R_star
+    TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)
     * (1 - TRUE_ECCENTRICITY**2) / (1 + TRUE_ECCENTRICITY * jnp.sin(TRUE_ARG_PERIAPSIS))
 )
 # Argument inside arcsin
@@ -65,11 +61,11 @@ arg = (
     / jnp.sin(TRUE_INCLINATION)
 )
 # Numerical safety
-arg = np.clip(arg, -1.0, 1.0)
+arg = jnp.clip(arg, -1.0, 1.0)
 # Transit duration
 TRUE_T14_TRANSIT = (
     (TRUE_P_ORB / jnp.pi)
-    * jnp.sqrt(1 - TRUE_ECCENTRICITY**2) / (1 + TRUE_ECCENTRICITY * jnp.sin(TRUE_ARG_PERIAPSIS * jnp.pi / 180.0))
+    * jnp.sqrt(1 - TRUE_ECCENTRICITY**2) / (1 + TRUE_ECCENTRICITY * jnp.sin(TRUE_ARG_PERIAPSIS))
     * jnp.arcsin(arg)
 )
 
@@ -287,27 +283,27 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     NumPyro model for the spot + facula + planet posterior.
     Uses pre-built STATIC_MODEL for JIT-compatibility.
     """
-    spot_lat = numpyro.sample("spot_lat", dist.Uniform(LAT_MIN, LAT_MAX))
-    spot_long = numpyro.sample("spot_long", dist.Uniform(LONG_MIN, LONG_MAX))
-    spot_size = numpyro.sample("spot_size", dist.Uniform(SIZE_MIN, SIZE_MAX))
-    spot_flux = numpyro.sample("spot_flux", dist.Uniform(FLUX_MIN, FLUX_MAX))
-    
-    fac_lat = numpyro.sample("fac_lat", dist.Uniform(LAT_MIN, LAT_MAX))
-    fac_long = numpyro.sample("fac_long", dist.Uniform(LONG_MIN, LONG_MAX))
-    fac_size = numpyro.sample("fac_size", dist.Uniform(SIZE_MIN, SIZE_MAX))
-    fac_flux = numpyro.sample("fac_flux", dist.Uniform(FLUX_MIN, FLUX_MAX))
+    spot_lat = numpyro.sample("spot_lat", PRIOR_DISTRIBUTIONS["spot_lat"])
+    spot_long = numpyro.sample("spot_long", PRIOR_DISTRIBUTIONS["spot_long"])
+    spot_size = numpyro.sample("spot_size", PRIOR_DISTRIBUTIONS["spot_size"])
+    spot_flux = numpyro.sample("spot_flux", PRIOR_DISTRIBUTIONS["spot_flux"])
 
-    P_rot = numpyro.sample("p_rot", dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0))
-    LDC_u1 = numpyro.sample("ldc_u1", dist.Normal(0.0, 5.0))
-    LDC_u2 = numpyro.sample("ldc_u2", dist.Normal(0.0, 5.0))
+    fac_lat = numpyro.sample("fac_lat", PRIOR_DISTRIBUTIONS["fac_lat"])
+    fac_long = numpyro.sample("fac_long", PRIOR_DISTRIBUTIONS["fac_long"])
+    fac_size = numpyro.sample("fac_size", PRIOR_DISTRIBUTIONS["fac_size"])
+    fac_flux = numpyro.sample("fac_flux", PRIOR_DISTRIBUTIONS["fac_flux"])
+
+    P_rot = numpyro.sample("p_rot", PRIOR_DISTRIBUTIONS["p_rot"])
+    LDC_u1 = numpyro.sample("ldc_u1", PRIOR_DISTRIBUTIONS["ldc_u1"])
+    LDC_u2 = numpyro.sample("ldc_u2", PRIOR_DISTRIBUTIONS["ldc_u2"])
 
     # Planet parameters
-    planet_radius = numpyro.sample("planet_radius", dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5))
-    semimajor_axis = numpyro.sample("semimajor_axis", dist.LogNormal(jnp.log(5.0), 0.5))
-    inclination = numpyro.sample("inclination", dist.Uniform(INCLINATION_MIN, INCLINATION_MAX))
-    eccentricity = numpyro.sample("eccentricity", dist.Beta(1, 5))
-    arg_periapsis = numpyro.sample("arg_periapsis", dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX))
-    P_orb = numpyro.sample("P_orb", dist.Normal(TRUE_P_ORB, 0.01))
+    planet_radius = numpyro.sample("planet_radius", PRIOR_DISTRIBUTIONS["planet_radius"])
+    semimajor_axis = numpyro.sample("semimajor_axis", PRIOR_DISTRIBUTIONS["semimajor_axis"])
+    inclination = numpyro.sample("inclination", PRIOR_DISTRIBUTIONS["inclination"])
+    eccentricity = numpyro.sample("eccentricity", PRIOR_DISTRIBUTIONS["eccentricity"])
+    arg_periapsis = numpyro.sample("arg_periapsis", PRIOR_DISTRIBUTIONS["arg_periapsis"])
+    P_orb = numpyro.sample("P_orb", PRIOR_DISTRIBUTIONS["P_orb"])
 
 # --- DYNAMIC CALCULATIONS (JAX) ---
     
@@ -322,7 +318,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
         a_over_rstar=semimajor_axis,
         inclination=jnp.deg2rad(inclination),
         ecc=eccentricity,
-        omega_peri=arg_periapsis
+        omega_peri=jnp.deg2rad(arg_periapsis)
     )
 
     # Rotate Active Regions
@@ -438,7 +434,7 @@ GROUND_TRUTH = {
     "semimajor_axis": TRUE_SEMI_MAJOR,
     "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
     "eccentricity": TRUE_ECCENTRICITY,
-    "arg_periapsis": TRUE_ARG_PERIAPSIS,
+    "arg_periapsis": float(jnp.rad2deg(TRUE_ARG_PERIAPSIS)),
     "P_orb": TRUE_P_ORB,
     "LDC_u1": TRUE_LDC_U1,
     "LDC_u2": TRUE_LDC_U2,
