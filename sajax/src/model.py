@@ -123,8 +123,8 @@ PLANET_RADIUS_MIN, PLANET_RADIUS_MAX = 0.001, 0.3  # Rp/Rs
 SEMI_MAJOR_MIN, SEMI_MAJOR_MAX = 0.0, 10.0         # a/R* (semi-major axis in stellar radii)
 INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
 P_ORB_MIN, P_ORB_MAX = 1.0, 10.0                   # orbital period [days]
-ECCENTRICITY_MIN, ECCENTRICITY_MAX = 0.0, 0.5      # eccentricity
-ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX = 0.0, 360.0  # argument of periastron [degrees]
+ECC_H_SCALE = 0.3   # √e·cos(ω) prior scale
+ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 
 # ---------------------------------------------------------------------------
 # Prior distributions (numpyro) — single source of truth for all samplers
@@ -142,8 +142,8 @@ PRIOR_DISTRIBUTIONS = {
     "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
     "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-    "eccentricity":  dist.Beta(1, 5),
-    "arg_periapsis": dist.Uniform(ARG_PERIAPSIS_MIN, ARG_PERIAPSIS_MAX),
+    "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
+    "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     "ldc_u1":        dist.Normal(0.0, 5.0),
     "ldc_u2":        dist.Normal(0.0, 5.0),
@@ -301,8 +301,10 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     planet_radius = numpyro.sample("planet_radius", PRIOR_DISTRIBUTIONS["planet_radius"])
     semimajor_axis = numpyro.sample("semimajor_axis", PRIOR_DISTRIBUTIONS["semimajor_axis"])
     inclination = numpyro.sample("inclination", PRIOR_DISTRIBUTIONS["inclination"])
-    eccentricity = numpyro.sample("eccentricity", PRIOR_DISTRIBUTIONS["eccentricity"])
-    arg_periapsis = numpyro.sample("arg_periapsis", PRIOR_DISTRIBUTIONS["arg_periapsis"])
+    ecc_h = numpyro.sample("ecc_h", PRIOR_DISTRIBUTIONS["ecc_h"])
+    ecc_k = numpyro.sample("ecc_k", PRIOR_DISTRIBUTIONS["ecc_k"])
+    eccentricity = numpyro.deterministic("eccentricity", ecc_h**2 + ecc_k**2)
+    arg_periapsis = numpyro.deterministic("arg_periapsis", jnp.arctan2(ecc_k, ecc_h))
     P_orb = numpyro.sample("P_orb", PRIOR_DISTRIBUTIONS["P_orb"])
 
 # --- DYNAMIC CALCULATIONS (JAX) ---
@@ -318,7 +320,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
         a_over_rstar=semimajor_axis,
         inclination=jnp.deg2rad(inclination),
         ecc=eccentricity,
-        omega_peri=jnp.deg2rad(arg_periapsis)
+        omega_peri=arg_periapsis
     )
 
     # Rotate Active Regions
@@ -381,7 +383,7 @@ def make_log_density(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STA
              fac_lat, fac_long, fac_size, fac_flux,
              p_rot,
              planet_radius, semimajor_axis, inclination (degrees),
-             eccentricity, arg_periapsis, P_orb,
+             ecc_h, ecc_k, P_orb,
              ldc_u1, ldc_u2]
     """
     y_obs_jnp = jnp.array(y_obs)
@@ -400,9 +402,9 @@ def make_log_density(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STA
             "planet_radius": x[9],
             "semimajor_axis": x[10],
             "inclination": x[11],
-            "eccentricity": x[12],
-            "arg_periapsis": x[13], 
-            "P_orb": x[14], 
+            "ecc_h": x[12],
+            "ecc_k": x[13],
+            "P_orb": x[14],
             "ldc_u1": x[15],
             "ldc_u2": x[16],
         }
@@ -433,8 +435,8 @@ GROUND_TRUTH = {
     "planet_radius": TRUE_PLANET_RADIUS,
     "semimajor_axis": TRUE_SEMI_MAJOR,
     "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
-    "eccentricity": TRUE_ECCENTRICITY,
-    "arg_periapsis": float(jnp.rad2deg(TRUE_ARG_PERIAPSIS)),
+    "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
+    "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
     "P_orb": TRUE_P_ORB,
     "LDC_u1": TRUE_LDC_U1,
     "LDC_u2": TRUE_LDC_U2,

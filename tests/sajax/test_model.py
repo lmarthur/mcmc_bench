@@ -41,8 +41,8 @@ sajax_model = _mod.sajax_model
 
 # ---------------------------------------------------------------------------
 # Ground-truth parameter vector matching the 17-element ordering in
-# make_log_density. Inclination and arg_periapsis are in degrees, matching
-# the convention in GROUND_TRUTH and the prior distributions.
+# make_log_density. Inclination is in degrees; ecc_h/ecc_k are in the
+# reparameterized space (√e·cos(ω), √e·sin(ω)).
 # ---------------------------------------------------------------------------
 GT_VECTOR = jnp.array([
     GROUND_TRUTH["spot_lat"],
@@ -57,8 +57,8 @@ GT_VECTOR = jnp.array([
     GROUND_TRUTH["planet_radius"],
     GROUND_TRUTH["semimajor_axis"],
     GROUND_TRUTH["inclination"],
-    GROUND_TRUTH["eccentricity"],
-    GROUND_TRUTH["arg_periapsis"],
+    GROUND_TRUTH["ecc_h"],
+    GROUND_TRUTH["ecc_k"],
     GROUND_TRUTH["P_orb"],
     GROUND_TRUTH["LDC_u1"],
     GROUND_TRUTH["LDC_u2"],
@@ -73,7 +73,7 @@ def _sample_prior_vector(seed: int = 0) -> jnp.ndarray:
         "fac_lat", "fac_long", "fac_size", "fac_flux",
         "p_rot",
         "planet_radius", "semimajor_axis", "inclination",
-        "eccentricity", "arg_periapsis", "P_orb",
+        "ecc_h", "ecc_k", "P_orb",
         "ldc_u1", "ldc_u2",
     ]
     key = jax.random.PRNGKey(int(rng.integers(0, 2**31 - 1)))
@@ -197,6 +197,8 @@ def test_ground_truth_residuals_at_noise_level():
     """Reconstructed light curve via the one-shot API (_call_sajax) at ground
     truth should match OBS_LIGHT_CURVE to within ~SIGMA_NOISE. A large residual
     std indicates the one-shot forward model does not round-trip correctly."""
+    ecc_h = GROUND_TRUTH["ecc_h"]
+    ecc_k = GROUND_TRUTH["ecc_k"]
     result = _call_sajax(
         TIMES,
         jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
@@ -208,8 +210,8 @@ def test_ground_truth_residuals_at_noise_level():
         GROUND_TRUTH["planet_radius"],
         GROUND_TRUTH["semimajor_axis"],
         jnp.deg2rad(GROUND_TRUTH["inclination"]),
-        GROUND_TRUTH["eccentricity"],
-        jnp.deg2rad(GROUND_TRUTH["arg_periapsis"]),
+        ecc_h**2 + ecc_k**2,
+        float(np.arctan2(ecc_k, ecc_h)),
         GROUND_TRUTH["P_orb"],
         GROUND_TRUTH["LDC_u1"],
         GROUND_TRUTH["LDC_u2"],
@@ -245,8 +247,8 @@ def test_two_stage_residuals_at_noise_level():
     planet_radius = gt["planet_radius"]
     semimajor     = gt["semimajor_axis"]
     inclination   = jnp.deg2rad(gt["inclination"])
-    eccentricity  = gt["eccentricity"]
-    arg_periapsis = jnp.deg2rad(gt["arg_periapsis"])
+    eccentricity  = gt["ecc_h"]**2 + gt["ecc_k"]**2
+    arg_periapsis = float(np.arctan2(gt["ecc_k"], gt["ecc_h"]))  # radians
     P_orb         = gt["P_orb"]
 
     dynamic_phases_rot = (m["times"] / P_rot * 360.0) % 360.0
@@ -322,6 +324,8 @@ def test_call_sajax_activity_only_runs():
     """One-shot API with planet_radius=0 (stellar activity only, no transit)
     should produce a finite light curve — guards against division-by-zero or
     NaN propagation in the no-planet edge case."""
+    _ecc_h = GROUND_TRUTH["ecc_h"]
+    _ecc_k = GROUND_TRUTH["ecc_k"]
     result = _call_sajax(
         TIMES,
         jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
@@ -333,8 +337,8 @@ def test_call_sajax_activity_only_runs():
         0.0,
         GROUND_TRUTH["semimajor_axis"],
         jnp.deg2rad(GROUND_TRUTH["inclination"]),
-        GROUND_TRUTH["eccentricity"],
-        jnp.deg2rad(GROUND_TRUTH["arg_periapsis"]),
+        _ecc_h**2 + _ecc_k**2,
+        float(np.arctan2(_ecc_k, _ecc_h)),
         GROUND_TRUTH["P_orb"],
         GROUND_TRUTH["LDC_u1"],
         GROUND_TRUTH["LDC_u2"],
@@ -362,6 +366,8 @@ def test_plot_api_comparison():
     m = STATIC_MODEL
 
     # One-shot API
+    _ecc_h = gt["ecc_h"]
+    _ecc_k = gt["ecc_k"]
     lc_one_shot = np.array(_call_sajax(
         TIMES,
         jnp.array([gt["spot_lat"], gt["fac_lat"]]),
@@ -372,8 +378,8 @@ def test_plot_api_comparison():
         gt["planet_radius"],
         gt["semimajor_axis"],
         jnp.deg2rad(gt["inclination"]),
-        gt["eccentricity"],
-        jnp.deg2rad(gt["arg_periapsis"]),
+        _ecc_h**2 + _ecc_k**2,
+        float(np.arctan2(_ecc_k, _ecc_h)),
         gt["P_orb"],
         gt["LDC_u1"],
         gt["LDC_u2"],
@@ -386,8 +392,8 @@ def test_plot_api_comparison():
     planet_radius = gt["planet_radius"]
     semimajor     = gt["semimajor_axis"]
     inclination   = jnp.deg2rad(gt["inclination"])
-    eccentricity  = gt["eccentricity"]
-    arg_periapsis = jnp.deg2rad(gt["arg_periapsis"])
+    eccentricity  = gt["ecc_h"]**2 + gt["ecc_k"]**2
+    arg_periapsis = float(np.arctan2(gt["ecc_k"], gt["ecc_h"]))  # radians
     P_orb         = gt["P_orb"]
     ar_lat        = jnp.array([gt["spot_lat"], gt["fac_lat"]])
     ar_long       = jnp.array([gt["spot_long"], gt["fac_long"]])
