@@ -124,7 +124,7 @@ def main(seed=0, save_outputs=True):
     )
 
     summary = az.summary(idata)
-    total_bulk_ess = summary["ess_bulk"].mean()
+    total_bulk_ess = summary["ess_bulk"].sum()
     ess_per_logp_eval = total_bulk_ess / total_log_density_evals
 
     _print("\n=== Diagnostics ===")
@@ -132,7 +132,7 @@ def main(seed=0, save_outputs=True):
     _print(f"  Total log-density evaluations: {int(total_log_density_evals)}")
     _print("\n  ArviZ summary (R-hat, ESS, MCSE):")
     _print(summary.to_string())
-    _print(f"\n  Average Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
+    _print(f"\n  Total Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
 
     wall_time_s = time.perf_counter() - t0
     _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
