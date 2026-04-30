@@ -42,6 +42,7 @@ make_constrain_fn        = _mod.make_constrain_fn
 make_log_ref             = _mod.make_log_ref
 plot_model               = _mod.plot_model
 sajax_model              = _mod.sajax_model
+sample_initial_positions = _mod.sample_initial_positions
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +63,7 @@ def test_obs_shape_matches_times():
 
 def test_param_names_match_ground_truth():
     assert PARAM_NAMES == list(GROUND_TRUTH.keys())
-    assert len(PARAM_NAMES) == 16
+    assert len(PARAM_NAMES) == 17
 
 
 def test_param_names_all_present_in_postprocess_output():
@@ -535,3 +536,74 @@ def test_plot_api_comparison():
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved API comparison plot to {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# sample_initial_positions
+# ---------------------------------------------------------------------------
+
+def test_sample_initial_positions_shape_dict():
+    n = 5
+    positions = sample_initial_positions(jax.random.PRNGKey(0), n)
+    for name in PRIOR_DISTRIBUTIONS:
+        assert positions[name].shape == (n,), (
+            f"Expected shape ({n},) for '{name}', got {positions[name].shape}"
+        )
+
+
+def test_sample_initial_positions_shape_flat():
+    n = 4
+    ndim = len(PRIOR_DISTRIBUTIONS)
+    coords = sample_initial_positions(jax.random.PRNGKey(0), n, return_flat=True)
+    assert coords.shape == (n, ndim), (
+        f"Expected shape ({n}, {ndim}), got {coords.shape}"
+    )
+
+
+def test_sample_initial_positions_within_prior_bounds():
+    """Constrained values from the dict form must fall within each prior's support."""
+    constrain_fn = make_constrain_fn()
+    positions = sample_initial_positions(jax.random.PRNGKey(7), 10)
+    constrained = jax.vmap(constrain_fn)(positions)
+    bounds = {
+        "spot_lat":    (-90.0,  90.0),
+        "spot_long":   (  0.0, 360.0),
+        "spot_size":   (  1.0,  90.0),
+        "spot_flux":   (  0.1,   2.0),
+        "fac_lat":     (-90.0,  90.0),
+        "fac_long":    (  0.0, 360.0),
+        "fac_size":    (  1.0,  90.0),
+        "fac_flux":    (  0.1,   2.0),
+        "inclination": ( 80.0, 100.0),
+        "ldc_q1":      (  0.0,   1.0),
+        "ldc_q2":      (  0.0,   1.0),
+    }
+    for name, (lo, hi) in bounds.items():
+        vals = np.array(constrained[name])
+        assert np.all(vals >= lo) and np.all(vals <= hi), (
+            f"'{name}' values outside [{lo}, {hi}]: {vals}"
+        )
+
+
+def test_sample_initial_positions_flat_gives_finite_log_density():
+    """Flat positions unravelled with init_z's unravel_fn must yield finite log density.
+
+    This catches key-ordering mismatches between sample_initial_positions and
+    initialize_model: a scrambled flat vector produces garbage but no error.
+    """
+    import jax.flatten_util
+    _, unravel_fn = jax.flatten_util.ravel_pytree(_INIT_Z)
+    coords = sample_initial_positions(jax.random.PRNGKey(0), 4, return_flat=True)
+    for i in range(4):
+        z = unravel_fn(coords[i])
+        ld = float(_LOG_DENSITY_FN(z))
+        assert np.isfinite(ld), (
+            f"Non-finite log density ({ld}) for flat position {i} — "
+            "possible key-ordering mismatch between sample_initial_positions and initialize_model"
+        )
+
+
+def test_sample_initial_positions_deterministic():
+    a = sample_initial_positions(jax.random.PRNGKey(42), 3, return_flat=True)
+    b = sample_initial_positions(jax.random.PRNGKey(42), 3, return_flat=True)
+    assert jnp.allclose(a, b)

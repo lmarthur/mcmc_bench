@@ -4,8 +4,8 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH -p mit_preemptable
 #SBATCH -G l40s:1
-#SBATCH -o tests/output/slurm_%j.out
-#SBATCH -e tests/output/slurm_%j.err
+#SBATCH -o tests/output/test.out
+#SBATCH -e tests/output/test.err
 
 mkdir -p tests/output
 
