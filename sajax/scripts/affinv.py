@@ -2,6 +2,7 @@
 Run Affine Invariant MCMC on the sajax planet+activity model.
 """
 
+import json
 import sys
 import time
 import warnings
@@ -135,12 +136,42 @@ def main(seed=0, save_outputs=True):
     _print(f"\n  Total Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
 
     wall_time_s = time.perf_counter() - t0
+
+    gt_array = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
+    posterior_means = np.array([np.array(cold_samples[p]).mean() for p in PARAM_NAMES])
+    param_bias = posterior_means - gt_array
+
+    _print("\n  Parameter recovery (posterior mean vs ground truth):")
+    for name, pm, gt, bias in zip(PARAM_NAMES, posterior_means, gt_array, param_bias):
+        _print(f"    {name:20s}  mean={pm:8.4f}  truth={gt:8.4f}  bias={bias:+.4f}")
     _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+
+    diagnostics = {
+        "sampler": "AffineInvariantEnsemble",
+        "num_walkers": NUM_WALKERS,
+        "num_burnin": NUM_BURNIN,
+        "num_samples": NUM_SAMPLES,
+        "ndim": NDIM,
+        "mean_acceptance_rate": float(acceptance),
+        "total_log_density_evals": int(total_log_density_evals),
+        "wall_time_s": float(wall_time_s),
+        "total_bulk_ess": float(total_bulk_ess),
+        "bulk_ess_per_logp_eval": float(ess_per_logp_eval),
+        "posterior_means": {name: float(pm) for name, pm in zip(PARAM_NAMES, posterior_means)},
+        "ground_truth": {k: float(v) for k, v in GROUND_TRUTH.items()},
+        "param_bias": {name: float(b) for name, b in zip(PARAM_NAMES, param_bias)},
+        "arviz_summary": json.loads(summary.to_json()),
+    }
 
     # --- Save Results ---
     if save_outputs:
         AFFINV_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         idata.to_netcdf(str(AFFINV_OUTPUT_DIR / "sajax_idata.nc"))
+        diag_path = AFFINV_OUTPUT_DIR / "diagnostics.json"
+        with open(diag_path, "w") as f:
+            json.dump(diagnostics, f, indent=2)
+        _print(f"\nSaved idata to {AFFINV_OUTPUT_DIR / 'sajax_idata.nc'}")
+        _print(f"Saved diagnostics to {diag_path}")
 
         # 1. Trace Plots (subset for readability)
         plot_vars = PARAM_NAMES[:6]
@@ -228,7 +259,7 @@ def main(seed=0, save_outputs=True):
         fig.savefig(lc_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
 
-    return summary
+    return diagnostics
 
 
 if __name__ == "__main__":
