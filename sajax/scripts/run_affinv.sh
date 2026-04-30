@@ -2,7 +2,7 @@
 #SBATCH -N 1
 #SBATCH -n 8
 #SBATCH --mem-per-cpu=4G
-#SBATCH -p mit_normal_gpu
+#SBATCH -p mit_preemptable
 #SBATCH -G l40s:1
 #SBATCH -o sajax/output/affinv/slurm_%j.out
 #SBATCH -e sajax/output/affinv/slurm_%j.err

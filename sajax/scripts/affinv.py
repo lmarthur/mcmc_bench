@@ -39,8 +39,8 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 15000
-NUM_SAMPLES = 20000
+NUM_BURNIN = 500
+NUM_SAMPLES = 1000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
@@ -162,11 +162,7 @@ def main(seed=0, save_outputs=True):
         plt.close()
 
         # 3. Best-fit light curve using posterior mean
-        mean_c = {name: float(np.array(v).mean()) for name, v in cold_samples.items()}
-        mean_eccentricity = mean_c["ecc_h"]**2 + mean_c["ecc_k"]**2
-        mean_arg_periapsis = float(np.arctan2(mean_c["ecc_k"], mean_c["ecc_h"]))
-        mean_u1 = 2 * np.sqrt(mean_c["ldc_q1"]) * mean_c["ldc_q2"]
-        mean_u2 = np.sqrt(mean_c["ldc_q1"]) * (1 - 2 * mean_c["ldc_q2"])
+        mean_c = {name: float(np.array(v).mean()) for name, v in constrained.items()}
 
         lc_bestfit = np.array(
             _call_sajax(
@@ -179,11 +175,11 @@ def main(seed=0, save_outputs=True):
                 mean_c["planet_radius"],
                 mean_c["semimajor_axis"],
                 np.deg2rad(mean_c["inclination"]),
-                mean_eccentricity,
-                mean_arg_periapsis,
+                mean_c["eccentricity"],
+                mean_c["arg_periapsis"],
                 TRUE_P_ORB,
-                mean_u1,
-                mean_u2,
+                mean_c["ldc_u1"],
+                mean_c["ldc_u2"],
             )["lc"]
         )
 
