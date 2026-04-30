@@ -31,6 +31,7 @@ STATIC_MODEL             = _mod.STATIC_MODEL
 TRUE_T0_TRANSIT          = _mod.TRUE_T0_TRANSIT
 TRUE_LDC_U1              = _mod.TRUE_LDC_U1
 TRUE_LDC_U2              = _mod.TRUE_LDC_U2
+TRUE_P_ORB               = _mod.TRUE_P_ORB
 _call_sajax              = _mod._call_sajax
 _compute_all_phases      = _mod._compute_all_phases
 compute_planet_sky_positions = _mod.compute_planet_sky_positions
@@ -61,7 +62,7 @@ def test_obs_shape_matches_times():
 
 def test_param_names_match_ground_truth():
     assert PARAM_NAMES == list(GROUND_TRUTH.keys())
-    assert len(PARAM_NAMES) == 17
+    assert len(PARAM_NAMES) == 16
 
 
 def test_param_names_all_present_in_postprocess_output():
@@ -285,7 +286,7 @@ def test_ground_truth_residuals_at_noise_level():
         jnp.deg2rad(GROUND_TRUTH["inclination"]),
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
-        GROUND_TRUTH["P_orb"],
+        TRUE_P_ORB,
         TRUE_LDC_U1,
         TRUE_LDC_U2,
     )
@@ -320,7 +321,7 @@ def test_two_stage_residuals_at_noise_level():
     inclination   = jnp.deg2rad(gt["inclination"])
     eccentricity  = gt["ecc_h"]**2 + gt["ecc_k"]**2
     arg_periapsis = jnp.arctan2(gt["ecc_k"], gt["ecc_h"])
-    P_orb         = gt["P_orb"]
+    P_orb         = TRUE_P_ORB
 
     dynamic_phases_rot = (m["times"] / P_rot * 360.0) % 360.0
 
@@ -407,7 +408,7 @@ def test_call_sajax_activity_only_runs():
         jnp.deg2rad(GROUND_TRUTH["inclination"]),
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
-        GROUND_TRUTH["P_orb"],
+        TRUE_P_ORB,
         TRUE_LDC_U1,
         TRUE_LDC_U2,
     )
@@ -447,7 +448,7 @@ def test_plot_api_comparison():
         jnp.deg2rad(gt["inclination"]),
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
-        gt["P_orb"],
+        TRUE_P_ORB,
         TRUE_LDC_U1,
         TRUE_LDC_U2,
     )["lc"])
@@ -460,7 +461,7 @@ def test_plot_api_comparison():
     inclination   = jnp.deg2rad(gt["inclination"])
     eccentricity  = ecc_h**2 + ecc_k**2
     arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
-    P_orb         = gt["P_orb"]
+    P_orb         = TRUE_P_ORB
     ar_lat        = jnp.array([gt["spot_lat"], gt["fac_lat"]])
     ar_long       = jnp.array([gt["spot_long"], gt["fac_long"]])
     ar_size       = jnp.array([gt["spot_size"], gt["fac_size"]])

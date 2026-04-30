@@ -142,7 +142,6 @@ PRIOR_DISTRIBUTIONS = {
     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
     "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
     "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
-    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     "ldc_q1":        dist.Uniform(0.0, 1.0),
     "ldc_q2":        dist.Uniform(0.0, 1.0),
 }
@@ -305,7 +304,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     ecc_k = numpyro.sample("ecc_k", PRIOR_DISTRIBUTIONS["ecc_k"])
     eccentricity = numpyro.deterministic("eccentricity", ecc_h**2 + ecc_k**2)
     arg_periapsis = numpyro.deterministic("arg_periapsis", jnp.arctan2(ecc_k, ecc_h))
-    P_orb = numpyro.sample("P_orb", PRIOR_DISTRIBUTIONS["P_orb"])
+    P_orb = TRUE_P_ORB
 
 # --- DYNAMIC CALCULATIONS (JAX) ---
     
@@ -455,7 +454,6 @@ GROUND_TRUTH = {
     "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
     "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
     "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
-    "P_orb": TRUE_P_ORB,
     "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
     "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
 }

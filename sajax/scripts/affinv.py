@@ -34,12 +34,13 @@ from model import (
     PRIOR_DISTRIBUTIONS,
     TRUE_LDC_U1,
     TRUE_LDC_U2,
+    TRUE_P_ORB,
 )
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 1000
-NUM_SAMPLES = 2000
+NUM_BURNIN = 15000
+NUM_SAMPLES = 20000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
@@ -180,7 +181,7 @@ def main(seed=0, save_outputs=True):
                 np.deg2rad(mean_c["inclination"]),
                 mean_eccentricity,
                 mean_arg_periapsis,
-                mean_c["P_orb"],
+                TRUE_P_ORB,
                 mean_u1,
                 mean_u2,
             )["lc"]
@@ -199,7 +200,7 @@ def main(seed=0, save_outputs=True):
                 np.deg2rad(GROUND_TRUTH["inclination"]),
                 GROUND_TRUTH["ecc_h"]**2 + GROUND_TRUTH["ecc_k"]**2,
                 float(np.arctan2(GROUND_TRUTH["ecc_k"], GROUND_TRUTH["ecc_h"])),
-                GROUND_TRUTH["P_orb"],
+                TRUE_P_ORB,
                 TRUE_LDC_U1,
                 TRUE_LDC_U2,
             )["lc"]
