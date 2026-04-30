@@ -23,16 +23,13 @@ from model import (
     make_inference_fns,
     make_constrain_fn,
     plot_model,
-    _call_sajax,
+    sample_initial_positions,
+    plot_bestfit_lightcurve,
     OUTPUT_DIR,
     PARAM_NAMES,
     GROUND_TRUTH,
-    TIMES,
     OBS_LIGHT_CURVE,
     PRIOR_DISTRIBUTIONS,
-    TRUE_LDC_U1,
-    TRUE_LDC_U2,
-    TRUE_P_ORB,
 )
 
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
@@ -64,22 +61,6 @@ _SIGMA_MIN = min(_UNC_PRIOR_STDS.values())
 STEP_SIZE = 2.38 / np.sqrt(NDIM) * _SIGMA_MIN
 
 
-def get_initial_positions(key, num_chains):
-    """Sample each chain's starting position from the prior in unconstrained space."""
-    from numpyro.distributions import biject_to
-    inv_transforms = {name: biject_to(d.support).inv for name, d in PRIOR_DISTRIBUTIONS.items()}
-
-    chain_keys = jax.random.split(key, num_chains)
-    positions = []
-    for ck in chain_keys:
-        param_keys = jax.random.split(ck, len(PRIOR_DISTRIBUTIONS))
-        z_dict = {
-            name: inv_transforms[name](d.sample(pk))
-            for pk, (name, d) in zip(param_keys, PRIOR_DISTRIBUTIONS.items())
-        }
-        positions.append(z_dict)
-    return jax.tree.map(lambda *arrays: jnp.stack(arrays), *positions)
-
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
     def one_step(state, rng_key):
@@ -105,7 +86,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     t0 = time.perf_counter()
 
     # Initialise chains in unconstrained space
-    x0 = get_initial_positions(init_key, NUM_CHAINS)
+    x0 = sample_initial_positions(init_key, NUM_CHAINS)
 
     x0_constrained = jax.vmap(constrain_fn)(x0)
     _print("Initial chain positions (constrained space):")
@@ -251,68 +232,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     plt.savefig(RWMH_OUTPUT_DIR / "corner_all.png", dpi=120, bbox_inches="tight")
     plt.close()
 
-    mean_c = {k: float(np.array(v).mean()) for k, v in constrained_positions.items()}
-
-    lc_bestfit = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([mean_c["spot_lat"],  mean_c["fac_lat"]]),
-            np.array([mean_c["spot_long"], mean_c["fac_long"]]),
-            np.array([mean_c["spot_size"], mean_c["fac_size"]]),
-            np.stack([np.array([mean_c["spot_flux"]]), np.array([mean_c["fac_flux"]])]),
-            mean_c["p_rot"],
-            mean_c["planet_radius"],
-            mean_c["semimajor_axis"],
-            jnp.deg2rad(mean_c["inclination"]),
-            mean_c["eccentricity"],
-            mean_c["arg_periapsis"],
-            TRUE_P_ORB,
-            mean_c["ldc_u1"],
-            mean_c["ldc_u2"],
-        )["lc"]
-    )
-
-    lc_true = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([GROUND_TRUTH["spot_lat"],  GROUND_TRUTH["fac_lat"]]),
-            np.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
-            np.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
-            np.stack([np.array([GROUND_TRUTH["spot_flux"]]), np.array([GROUND_TRUTH["fac_flux"]])]),
-            GROUND_TRUTH["p_rot"],
-            GROUND_TRUTH["planet_radius"],
-            GROUND_TRUTH["semimajor_axis"],
-            jnp.deg2rad(GROUND_TRUTH["inclination"]),
-            GROUND_TRUTH["ecc_h"]**2 + GROUND_TRUTH["ecc_k"]**2,
-            jnp.arctan2(GROUND_TRUTH["ecc_k"], GROUND_TRUTH["ecc_h"]),
-            TRUE_P_ORB,
-            TRUE_LDC_U1,
-            TRUE_LDC_U2,
-        )["lc"]
-    )
-
-    fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
-                                         gridspec_kw={"height_ratios": [3, 1]})
-    ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
-                  label="Observations", zorder=1)
-    ax_lc.plot(TIMES, lc_true,    lw=2, color="steelblue", label="True",             zorder=2)
-    ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson",   linestyle="--",
-               label="Posterior mean fit", zorder=3)
-    ax_lc.set_ylabel("Normalised flux")
-    ax_lc.legend(frameon=False)
-    ax_lc.spines["top"].set_visible(False)
-    ax_lc.spines["right"].set_visible(False)
-    residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
-    ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
-    ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
-    ax_res.set_xlabel("Time [days]")
-    ax_res.set_ylabel("Residuals [ppm]")
-    ax_res.spines["top"].set_visible(False)
-    ax_res.spines["right"].set_visible(False)
-    fig.tight_layout()
-    fig.savefig(RWMH_OUTPUT_DIR / "bestfit_lightcurve.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    _print(f"Saved best-fit light curve to {RWMH_OUTPUT_DIR / 'bestfit_lightcurve.png'}")
+    plot_bestfit_lightcurve(constrained_positions, RWMH_OUTPUT_DIR)
 
     return diagnostics
 

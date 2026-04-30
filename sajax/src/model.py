@@ -142,6 +142,7 @@ PRIOR_DISTRIBUTIONS = {
     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
     "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
     "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
+    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     "ldc_q1":        dist.Uniform(0.0, 1.0),
     "ldc_q2":        dist.Uniform(0.0, 1.0),
 }
@@ -272,6 +273,25 @@ def generate_observations(seed: int = 0) -> np.ndarray:
 # Generate observations once at import time
 OBS_LIGHT_CURVE = generate_observations(seed=42)
 
+LC_TRUE = np.array(
+    _call_sajax(
+        TIMES,
+        jnp.array([TRUE_SPOT_LAT, TRUE_FACULA_LAT]),
+        jnp.array([TRUE_SPOT_LONG, TRUE_FACULA_LONG]),
+        jnp.array([TRUE_SPOT_SIZE, TRUE_FACULA_SIZE]),
+        np.stack([FLUX_ACTIVE_SPOT, FLUX_ACTIVE_FACULA]),
+        TRUE_P_ROT,
+        TRUE_PLANET_RADIUS,
+        TRUE_SEMI_MAJOR,
+        TRUE_INCLINATION,
+        TRUE_ECCENTRICITY,
+        TRUE_ARG_PERIAPSIS,
+        TRUE_P_ORB,
+        TRUE_LDC_U1,
+        TRUE_LDC_U2,
+    )["lc"]
+)
+
 # ---------------------------------------------------------------------------
 # NumPyro model (MCMC API)
 # ---------------------------------------------------------------------------
@@ -304,7 +324,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     ecc_k = numpyro.sample("ecc_k", PRIOR_DISTRIBUTIONS["ecc_k"])
     eccentricity = numpyro.deterministic("eccentricity", ecc_h**2 + ecc_k**2)
     arg_periapsis = numpyro.deterministic("arg_periapsis", jnp.arctan2(ecc_k, ecc_h))
-    P_orb = TRUE_P_ORB
+    P_orb = numpyro.sample("P_orb", PRIOR_DISTRIBUTIONS["P_orb"])
 
 # --- DYNAMIC CALCULATIONS (JAX) ---
     
@@ -418,6 +438,32 @@ def make_constrain_fn():
     return constrain_fn
 
 
+def sample_initial_positions(key: jax.Array, n: int, return_flat: bool = False):
+    """Sample n starting positions from the prior in unconstrained space.
+
+    If return_flat=True, returns shape (n, ndim) suitable for ensemble samplers.
+    If return_flat=False, returns a pytree dict with each value shape (n,).
+    """
+    import jax.flatten_util
+    from numpyro.distributions import biject_to
+    inv_transforms = {name: biject_to(d.support).inv for name, d in PRIOR_DISTRIBUTIONS.items()}
+
+    chain_keys = jax.random.split(key, n)
+    positions = []
+    for ck in chain_keys:
+        param_keys = jax.random.split(ck, len(PRIOR_DISTRIBUTIONS))
+        z_dict = {
+            name: inv_transforms[name](d.sample(pk))
+            for pk, (name, d) in zip(param_keys, PRIOR_DISTRIBUTIONS.items())
+        }
+        positions.append(z_dict)
+
+    if return_flat:
+        flat_positions = [jax.flatten_util.ravel_pytree(z)[0] for z in positions]
+        return jnp.stack(flat_positions)
+    return jax.tree.map(lambda *arrays: jnp.stack(arrays), *positions)
+
+
 def make_log_ref(rng_key):
     """
     Returns the log density of the prior in unconstrained space.
@@ -454,6 +500,7 @@ GROUND_TRUTH = {
     "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
     "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
     "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
+    "P_orb": TRUE_P_ORB,
     "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
     "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
 }
@@ -591,3 +638,54 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved diagnostic plot with snapshots to {out_path}")
+
+
+def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path):
+    """Plot posterior mean light curve vs truth and observations, save to output_dir."""
+    mean_c = {name: float(np.array(v).mean()) for name, v in constrained_samples.items()}
+
+    lc_bestfit = np.array(
+        _call_sajax(
+            TIMES,
+            np.array([mean_c["spot_lat"], mean_c["fac_lat"]]),
+            np.array([mean_c["spot_long"], mean_c["fac_long"]]),
+            np.array([mean_c["spot_size"], mean_c["fac_size"]]),
+            np.stack([np.array([mean_c["spot_flux"]]), np.array([mean_c["fac_flux"]])]),
+            mean_c["p_rot"],
+            mean_c["planet_radius"],
+            mean_c["semimajor_axis"],
+            np.deg2rad(mean_c["inclination"]),
+            mean_c["eccentricity"],
+            mean_c["arg_periapsis"],
+            mean_c["P_orb"],
+            mean_c["ldc_u1"],
+            mean_c["ldc_u2"],
+        )["lc"]
+    )
+
+    fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
+                                         gridspec_kw={"height_ratios": [3, 1]})
+    ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
+                  label="Observations", zorder=1)
+    ax_lc.plot(TIMES, LC_TRUE, lw=2, color="steelblue", label="True", zorder=2)
+    ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson", linestyle="--",
+               label="Posterior mean fit", zorder=3)
+    ax_lc.set_ylabel("Normalised flux")
+    ax_lc.legend(frameon=False)
+    ax_lc.spines["top"].set_visible(False)
+    ax_lc.spines["right"].set_visible(False)
+
+    residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
+    ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
+    ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
+    ax_res.set_xlabel("Time [days]")
+    ax_res.set_ylabel("Residuals [ppm]")
+    ax_res.spines["top"].set_visible(False)
+    ax_res.spines["right"].set_visible(False)
+
+    fig.tight_layout()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    lc_path = output_dir / "bestfit_lightcurve.png"
+    fig.savefig(lc_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved best-fit light curve to {lc_path}")
