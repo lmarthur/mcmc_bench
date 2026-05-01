@@ -20,20 +20,22 @@ with warnings.catch_warnings():
 import blackjax
 import blackjax.mcmc.random_walk
 import jax
+import jax.flatten_util
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import pt_jax
 
 from model import (
-    make_log_density,
+    make_inference_fns,
+    make_constrain_fn,
+    make_log_ref,
     plot_model,
-    _call_sajax,
+    sample_initial_positions,
+    plot_bestfit_lightcurve,
     OUTPUT_DIR,
     PARAM_NAMES,
     GROUND_TRUTH,
-    TIMES,
-    OBS_LIGHT_CURVE,
     PRIOR_DISTRIBUTIONS,
 )
 
@@ -51,7 +53,7 @@ NUM_CHAINS = 15
 NUM_WARMUP = 500
 
 # Number of posterior samples collected from the cold chain.
-NUM_SAMPLES = 2000
+NUM_SAMPLES = 1000
 
 # Local exploration kernel: "mala" (gradient-based) or "rwmh" (gradient-free).
 KERNEL = "rwmh"
@@ -83,15 +85,18 @@ ANNEALING_BASE = 1.4142135623730951  # sqrt(2)
 # ===========================================================================
 
 
-def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
-    """Sample each chain's starting position independently from the prior."""
-    positions = []
-    for name in PARAM_NAMES:
-        key, subkey = jax.random.split(key)
-        prior_key = name.lower() if name.startswith("LDC") else name
-        samples = PRIOR_DISTRIBUTIONS[prior_key].sample(subkey, sample_shape=(num_chains,))
-        positions.append(samples)
-    return jnp.stack(positions, axis=-1)
+def _unconstrained_prior_std(d) -> float:
+    """Return the std of prior d in unconstrained (bijected) space analytically.
+
+    Uniform(a, b): inverse bijection is logit → logistic distribution, std = π/√3.
+    Normal(μ, σ) / LogNormal(μ, σ): bijection is identity / log, unconstrained std = σ.
+    """
+    from numpyro.distributions import Uniform, Normal, LogNormal
+    if isinstance(d, Uniform):
+        return float(np.pi / np.sqrt(3.0))
+    elif isinstance(d, (Normal, LogNormal)):
+        return float(d.scale)
+    raise TypeError(f"No analytical unconstrained std for {type(d).__name__}")
 
 
 def make_rwmh_kernel_generator(proposal_scale):
@@ -129,26 +134,34 @@ def mala_kernel_generator(log_p, step_size):
 
 
 def main(seed: int = 0, save_outputs: bool = True):
+    # TODO: cold chain freezes after warmup due to P_orb landing far from its
+    # Normal(1.0, 0.0005) prior via a DEO swap. Root cause not yet confirmed.
+    # Leading hypothesis: log_density_flat and log_ref_flat have inconsistent
+    # Jacobian corrections (built from different initialize_model calls), causing
+    # log_density_flat - log_ref_flat ≠ log_likelihood and corrupting the
+    # tempering path. Diagnostic: evaluate log_ref_flat and log_density_flat at
+    # x0[-1] vs x0[-1].at[0].set(0.002) and compare deltas against the
+    # Normal(1.0, 0.0005) prior prediction (~-1.99e6).
     init_key, sample_key = jax.random.split(jax.random.PRNGKey(seed))
     _print = print if save_outputs else lambda *a, **kw: None
 
     ndim = len(PARAM_NAMES)
 
     # --- Model ---
-    log_density_fn = make_log_density()
+    log_density_fn, _, init_z = make_inference_fns(init_key)
+    _, unravel_fn = jax.flatten_util.ravel_pytree(init_z)
+    log_density_flat = lambda x: log_density_fn(unravel_fn(x))
+    constrain_fn = make_constrain_fn()
+    _test_vec = unravel_fn(jnp.arange(ndim, dtype=float))
+    flat_order = sorted(_test_vec.keys(), key=lambda k: float(_test_vec[k]))
+
+    log_ref_dict = make_log_ref(init_key)
+    log_ref_flat = lambda x: log_ref_dict(unravel_fn(x))
+
     if save_outputs:
         plot_model(filename="sajax_ground_truth.png")
 
     t0 = time.perf_counter()
-
-    # --- Reference distribution: the joint prior (likelihood-tempering path) ---
-    prior_keys = [name.lower() if name.startswith("LDC") else name for name in PARAM_NAMES]
-
-    def log_ref(x):
-        total = jnp.array(0.0)
-        for i, key in enumerate(prior_keys):
-            total = total + PRIOR_DISTRIBUTIONS[key].log_prob(x[i])
-        return total
 
     # --- Temperature schedule ---
     betas = pt_jax.annealing.annealing_exponential(NUM_CHAINS, base=ANNEALING_BASE)
@@ -160,13 +173,11 @@ def main(seed: int = 0, save_outputs: bool = True):
         proposal_scale = None
     elif KERNEL == "rwmh":
         step_size_hot, step_size_cold = STEP_SIZE_HOT_RWMH, STEP_SIZE_COLD_RWMH
-        # Per-dimension RWMH proposal scale: (2.38/√d) · prior_std_i.
+        # Per-dimension RWMH proposal scale in unconstrained space: (2.38/√d) · prior_std_i.
         # The per-chain α multiplies this vector to form the proposal sigma.
         prior_stds = jnp.array([
-            float(jnp.sqrt(PRIOR_DISTRIBUTIONS[
-                name.lower() if name.startswith("LDC") else name
-            ].variance))
-            for name in PARAM_NAMES
+            _unconstrained_prior_std(PRIOR_DISTRIBUTIONS[name])
+            for name in flat_order
         ])
         proposal_scale = (2.38 / jnp.sqrt(ndim)) * prior_stds
         kernel_generator = make_rwmh_kernel_generator(proposal_scale)
@@ -174,24 +185,40 @@ def main(seed: int = 0, save_outputs: bool = True):
         raise ValueError(f"Unknown KERNEL {KERNEL!r}; expected 'mala' or 'rwmh'.")
     step_sizes = jnp.linspace(step_size_hot, step_size_cold, NUM_CHAINS)
 
+    # --- Diagnostic 1: verify flat-array parameter ordering vs PARAM_NAMES ---
+    _print("Flat index → parameter mapping (from unravel_fn):")
+    for idx, name in enumerate(flat_order):
+        ps = float(proposal_scale[idx]) if proposal_scale is not None else float("nan")
+        expected_ps = float(2.38 / jnp.sqrt(ndim) * _unconstrained_prior_std(PRIOR_DISTRIBUTIONS[name])) if proposal_scale is not None else float("nan")
+        match = "OK" if abs(ps - expected_ps) < 1e-9 else "MISMATCH"
+        _print(f"  [{idx:2d}] {name:20s}  proposal_scale={ps:.5f}  expected={expected_ps:.5f}  {match}")
+
     K_ind = pt_jax.kernels.generate_independent_annealed_kernel(
-        log_prob=log_density_fn,
-        log_ref=log_ref,
+        log_prob=log_density_flat,
+        log_ref=log_ref_flat,
         annealing_schedule=betas,
         kernel_generator=kernel_generator,
         params=step_sizes,
     )
     K_deo = pt_jax.swap.generate_deo_extended_kernel(
-        log_prob=log_density_fn,
-        log_ref=log_ref,
+        log_prob=log_density_flat,
+        log_ref=log_ref_flat,
         annealing_schedule=betas,
     )
 
-    # --- Initialise chains from prior ---
-    x0 = get_initial_positions(init_key, NUM_CHAINS)
+    # --- Initialise chains from prior in unconstrained space ---
+    x0 = sample_initial_positions(init_key, NUM_CHAINS, return_flat=True)
+
+    # --- Diagnostic: initial chain positions in constrained space ---
+    x0_constrained = jax.vmap(lambda x: constrain_fn(unravel_fn(x)))(x0)
+    _print("Initial chain positions (constrained space):")
+    _print(f"  {'param':20s}  " + "  ".join(f"chain{i:02d}" for i in range(NUM_CHAINS)))
+    for name in PARAM_NAMES:
+        vals = np.array(x0_constrained[name])
+        _print(f"  {name:20s}  " + "  ".join(f"{v:8.4f}" for v in vals))
 
     # --- Diagnostic: initial log-density per chain (cold chain is index -1) ---
-    init_log_targets = np.array([float(log_density_fn(x0[i])) for i in range(NUM_CHAINS)])
+    init_log_targets = np.array([float(log_density_flat(x0[i])) for i in range(NUM_CHAINS)])
     _print("Initial log target density per chain (β increases left→right):")
     for i, lp in enumerate(init_log_targets):
         _print(f"    chain {i:2d}  beta={float(betas[i]):.4f}  log_target(x0)={lp:+.4e}")
@@ -215,17 +242,43 @@ def main(seed: int = 0, save_outputs: bool = True):
     wall_time_s = time.perf_counter() - t0
 
     # Cold chain (β=1, target distribution) is the last chain.
-    cold_samples = np.array(samples[:, -1, :])  # (NUM_SAMPLES, NDIM)
+    cold_samples_flat = np.array(samples[:, -1, :])  # (NUM_SAMPLES, NDIM)
     mean_swap_rejection = np.array(rejection_rates.mean(axis=0))  # (NUM_CHAINS - 1,)
+
+    # --- Diagnostic 2: compare raw flat values of first cold sample vs cold chain init ---
+    _print("\nRaw flat vector comparison (cold chain init vs first sample):")
+    _print(f"  {'idx':>4s}  {'param':20s}  {'x0[-1]':>12s}  {'sample[0]':>12s}  {'|Δ|':>12s}")
+    for idx, name in enumerate(flat_order):
+        v_init   = float(x0[-1, idx])
+        v_sample = float(cold_samples_flat[0, idx])
+        _print(f"  [{idx:2d}]  {name:20s}  {v_init:12.6f}  {v_sample:12.6f}  {abs(v_sample - v_init):12.6f}")
+
+    # --- Diagnostic 3: verify pt_jax chain ordering (cold chain should have higher log density) ---
+    ld_last_chain  = float(log_density_flat(jnp.array(samples[0, -1, :])))
+    ld_first_chain = float(log_density_flat(jnp.array(samples[0,  0, :])))
+    _print(f"\nChain ordering check (first post-warmup sample):")
+    _print(f"  log_density at samples[0, -1, :] (assumed cold): {ld_last_chain:+.4e}")
+    _print(f"  log_density at samples[0,  0, :] (assumed hot):  {ld_first_chain:+.4e}")
+    if ld_first_chain > ld_last_chain:
+        _print("  WARNING: index-0 chain has HIGHER log density — pt_jax may order chains cold→hot.")
+    else:
+        _print("  OK: index-(-1) chain has higher log density, consistent with cold=last.")
+
+    # Convert unconstrained cold-chain samples to constrained space
+    constrained_samples = jax.vmap(lambda x: constrain_fn(unravel_fn(x)))(
+        jnp.array(cold_samples_flat)
+    )
 
     # --- Diagnostic: did the cold chain move? Compare first vs last sample ---
     _print("\nCold-chain movement check (first vs last sample):")
     _print(f"  {'param':20s}  {'first':>12s}  {'last':>12s}  {'|Δ|':>12s}")
-    for i, name in enumerate(PARAM_NAMES):
-        first = float(cold_samples[0, i])
-        last = float(cold_samples[-1, i])
+    for name in PARAM_NAMES:
+        first = float(np.array(constrained_samples[name])[0])
+        last = float(np.array(constrained_samples[name])[-1])
         _print(f"  {name:20s}  {first:12.6f}  {last:12.6f}  {abs(last - first):12.6f}")
-    if np.allclose(cold_samples[0], cold_samples[-1]):
+    first_flat = cold_samples_flat[0]
+    last_flat = cold_samples_flat[-1]
+    if np.allclose(first_flat, last_flat):
         _print("  WARNING: cold chain first and last samples are identical — chain never moved.")
 
     # --- Diagnostics ---
@@ -234,7 +287,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     total_local_evals = NUM_CHAINS * (NUM_WARMUP + NUM_SAMPLES)
     cost_label = "gradient_evals" if KERNEL == "mala" else "log_density_evals"
 
-    posterior_dict = {PARAM_NAMES[i]: cold_samples[None, :, i] for i in range(ndim)}
+    posterior_dict = {name: np.array(constrained_samples[name])[None, :] for name in PARAM_NAMES}
     _az_log = logging.getLogger("arviz")
     _az_prev = _az_log.level
     if not save_outputs:
@@ -250,7 +303,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     ess_per_local_eval = total_bulk_ess / total_local_evals
 
     gt_array = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
-    posterior_means = cold_samples.mean(axis=0)
+    posterior_means = np.array([np.array(constrained_samples[p]).mean() for p in PARAM_NAMES])
     param_bias = posterior_means - gt_array
 
     _print("\n=== Diagnostics ===")
@@ -337,71 +390,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print(f"Saved full corner plot to {corner_path}")
 
     # Best-fit light curve using posterior mean
-    mean_dict = {name: float(posterior_means[i]) for i, name in enumerate(PARAM_NAMES)}
-
-    lc_bestfit = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([mean_dict["spot_lat"], mean_dict["fac_lat"]]),
-            np.array([mean_dict["spot_long"], mean_dict["fac_long"]]),
-            np.array([mean_dict["spot_size"], mean_dict["fac_size"]]),
-            np.stack([np.array([mean_dict["spot_flux"]]), np.array([mean_dict["fac_flux"]])]),
-            mean_dict["p_rot"],
-            mean_dict["planet_radius"],
-            mean_dict["semimajor_axis"],
-            np.deg2rad(mean_dict["inclination"]),
-            mean_dict["eccentricity"],
-            mean_dict["arg_periapsis"],
-            mean_dict["P_orb"],
-            mean_dict["LDC_u1"],
-            mean_dict["LDC_u2"],
-        )["lc"]
-    )
-
-    lc_true = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
-            np.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
-            np.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
-            np.stack([np.array([GROUND_TRUTH["spot_flux"]]), np.array([GROUND_TRUTH["fac_flux"]])]),
-            GROUND_TRUTH["p_rot"],
-            GROUND_TRUTH["planet_radius"],
-            GROUND_TRUTH["semimajor_axis"],
-            np.deg2rad(GROUND_TRUTH["inclination"]),
-            GROUND_TRUTH["eccentricity"],
-            GROUND_TRUTH["arg_periapsis"],
-            GROUND_TRUTH["P_orb"],
-            GROUND_TRUTH["LDC_u1"],
-            GROUND_TRUTH["LDC_u2"],
-        )["lc"]
-    )
-
-    fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
-                                         gridspec_kw={"height_ratios": [3, 1]})
-    ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
-                  label="Observations", zorder=1)
-    ax_lc.plot(TIMES, lc_true, lw=2, color="steelblue", label="True", zorder=2)
-    ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson", linestyle="--",
-               label="Posterior mean fit", zorder=3)
-    ax_lc.set_ylabel("Normalised flux")
-    ax_lc.legend(frameon=False)
-    ax_lc.spines["top"].set_visible(False)
-    ax_lc.spines["right"].set_visible(False)
-
-    residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
-    ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
-    ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
-    ax_res.set_xlabel("Time [days]")
-    ax_res.set_ylabel("Residuals [ppm]")
-    ax_res.spines["top"].set_visible(False)
-    ax_res.spines["right"].set_visible(False)
-
-    fig.tight_layout()
-    lc_path = DEO_OUTPUT_DIR / "bestfit_lightcurve.png"
-    fig.savefig(lc_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    _print(f"Saved best-fit light curve to {lc_path}")
+    plot_bestfit_lightcurve(constrained_samples, DEO_OUTPUT_DIR)
 
     # Per-pair swap rejection rates
     pair_labels = [f"{betas[i]:.3f}↔{betas[i+1]:.3f}" for i in range(NUM_CHAINS - 1)]
