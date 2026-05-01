@@ -46,7 +46,8 @@ NS_OUTPUT_DIR = OUTPUT_DIR / "ns"
 
 MAX_SAMPLES = 1e5
 NUM_POSTERIOR_DRAWS = 5000
-NUM_LIVE_POINTS = 100
+NUM_LIVE_POINTS = 200
+NUM_SLICES = 50
 DLOGZ_THRESHOLD = 5.0
 
 # Diagnostic stride — print intermediate results every DIAG_STRIDE dead points
@@ -111,6 +112,12 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
         # Extract this dead point
         constrained = {name: np.array(samples_dict[name])[idx] for name in PARAM_NAMES}
         
+        # Add derived quantities
+        constrained["eccentricity"] = constrained["ecc_h"]**2 + constrained["ecc_k"]**2
+        constrained["arg_periapsis"] = np.arctan2(constrained["ecc_k"], constrained["ecc_h"])
+        constrained["ldc_u1"] = 2 * np.sqrt(constrained["ldc_q1"]) * constrained["ldc_q2"]
+        constrained["ldc_u2"] = np.sqrt(constrained["ldc_q1"]) * (1 - 2 * constrained["ldc_q2"])
+
         # Compute chi-squared
         chi2 = compute_chi2(constrained)
         
@@ -173,12 +180,13 @@ def main(seed=0, save_outputs=True):
     ns = jaxns.NestedSampler(model=model, 
                             max_samples=MAX_SAMPLES, 
                             num_live_points=NUM_LIVE_POINTS,
-                            term_cond=jaxns.TerminationCondition(dlogZ=DLOGZ_THRESHOLD), 
+                            num_slices=NUM_SLICES,
                             verbose=True)
 
     _print("Running nested sampling...")
     t0 = time.perf_counter()
-    termination_reason, state = jax.jit(ns)(run_key)
+    term_cond = jaxns.TerminationCondition(dlogZ=DLOGZ_THRESHOLD)
+    termination_reason, state = jax.jit(ns)(run_key, term_cond=term_cond)
     results = ns.to_results(termination_reason=termination_reason, state=state)
     wall_time_s = time.perf_counter() - t0
 
