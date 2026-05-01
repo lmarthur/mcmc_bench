@@ -464,6 +464,91 @@ def sample_initial_positions(key: jax.Array, n: int, return_flat: bool = False):
     return jax.tree.map(lambda *arrays: jnp.stack(arrays), *positions)
 
 
+def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = STATIC_MODEL):
+    """
+    Returns log p(y_obs | params) for a constrained (physical) parameter dict.
+    For use with nested samplers (e.g. JAXNS) that handle the prior separately.
+    Expects dict keys matching PRIOR_DISTRIBUTIONS (ecc_h/ecc_k and ldc_q1/ldc_q2
+    are the sampled parameterization; eccentricity/arg_periapsis/ldc_u1/ldc_u2 are derived).
+    """
+    y_obs_arr = jnp.array(y_obs)
+
+    def log_likelihood(params):
+        P_rot = params["p_rot"]
+        ldc_q1 = params["ldc_q1"]
+        ldc_q2 = params["ldc_q2"]
+        LDC_u1 = 2 * jnp.sqrt(ldc_q1) * ldc_q2
+        LDC_u2 = jnp.sqrt(ldc_q1) * (1 - 2 * ldc_q2)
+        planet_radius = params["planet_radius"]
+        semimajor_axis = params["semimajor_axis"]
+        inclination = params["inclination"]
+        ecc_h = params["ecc_h"]
+        ecc_k = params["ecc_k"]
+        eccentricity = ecc_h**2 + ecc_k**2
+        arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
+        P_orb = params["P_orb"]
+
+        ar_lat = jnp.array([params["spot_lat"], params["fac_lat"]])
+        ar_long = jnp.array([params["spot_long"], params["fac_long"]])
+        ar_size = jnp.array([params["spot_size"], params["fac_size"]])
+
+        dynamic_phases_rot = (model_dict["times"] / P_rot * 360.0) % 360.0
+
+        planet_xyz_all = compute_planet_sky_positions(
+            times=model_dict["times"],
+            t0=TRUE_T0_TRANSIT,
+            period=P_orb,
+            a_over_rstar=semimajor_axis,
+            inclination=jnp.deg2rad(inclination),
+            ecc=eccentricity,
+            omega_peri=arg_periapsis,
+        )
+
+        spr = model_dict["star_pixel_rad"]
+        ar_cart = jnp.stack([
+            spr * jnp.sin(jnp.deg2rad(ar_long)) * jnp.cos(jnp.deg2rad(ar_lat)),
+            spr * jnp.sin(jnp.deg2rad(ar_lat)),
+            spr * jnp.cos(jnp.deg2rad(ar_long)) * jnp.cos(jnp.deg2rad(ar_lat)),
+        ], axis=-1)
+
+        all_ar_carts = jax.vmap(lambda p: jax.vmap(
+            lambda c: rotate_active_region(c, p, model_dict["inc_star"])
+        )(ar_cart))(dynamic_phases_rot)
+
+        flux_active = jnp.stack([
+            jnp.broadcast_to(params["spot_flux"], (1,)),
+            jnp.broadcast_to(params["fac_flux"], (1,)),
+        ])
+
+        lc, _, _ = _compute_all_phases(
+            all_ar_carts,
+            planet_xyz_all,
+            wavelength=model_dict["wavelength"],
+            flux_quiet_interp=model_dict["flux_quiet"],
+            flux_active_interp=flux_active,
+            ldc_coeffs=jnp.array([[LDC_u1, LDC_u2]]),
+            I_profile=model_dict["I_profile"],
+            mu_profile_pts=model_dict["mu_profile_pts"],
+            x_disc=model_dict["x_disc"],
+            y_disc=model_dict["y_disc"],
+            mu_disc=model_dict["mu_disc"],
+            vel_disc=model_dict["vel_disc"],
+            star_pixel_rad=spr,
+            total_pixels=model_dict["total_pixels"],
+            arsize_rads=jnp.deg2rad(ar_size),
+            k=planet_radius,
+            ldc_mode=model_dict["ldc_mode"],
+            ar_overlap_mode=model_dict["ar_overlap_mode"],
+            plot_map_wavelength=model_dict["plot_map_wavelength"],
+            n=model_dict["n"],
+            flat_indices=model_dict["flat_indices"],
+        )
+
+        return dist.Normal(lc, SIGMA_NOISE).log_prob(y_obs_arr).sum()
+
+    return log_likelihood
+
+
 def make_log_ref(rng_key):
     """
     Returns the log density of the prior in unconstrained space.
