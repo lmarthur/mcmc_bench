@@ -112,7 +112,6 @@ LAT_MIN, LAT_MAX = -90.0, 90.0
 LONG_MIN, LONG_MAX = 0.0, 360.0
 SIZE_MIN, SIZE_MAX = 1.0, 90.0
 FLUX_MIN, FLUX_MAX = 0.1, 2.0
-P_ROT_MIN, P_ROT_MAX = 0.1, 5.0
 
 # ---------------------------------------------------------------------------
 # Prior bounds: planet transit
@@ -120,7 +119,6 @@ P_ROT_MIN, P_ROT_MAX = 0.1, 5.0
 PLANET_RADIUS_MIN, PLANET_RADIUS_MAX = 0.001, 0.3  # Rp/Rs
 SEMI_MAJOR_MIN, SEMI_MAJOR_MAX = 0.0, 10.0         # a/R* (semi-major axis in stellar radii)
 INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
-P_ORB_MIN, P_ORB_MAX = 1.0, 10.0                   # orbital period [days]
 ECC_H_SCALE = 0.3   # √e·cos(ω) prior scale
 ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 
@@ -128,23 +126,23 @@ ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 # Prior distributions (numpyro) — single source of truth for all samplers
 # ---------------------------------------------------------------------------
 PRIOR_DISTRIBUTIONS = {
-    "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
-    "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
-    "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-    "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-    "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
-    "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
-    "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
-    "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
-    "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
-    "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
-    "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
-    "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-    "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
-    "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
+    "spot_lat":      dist.Uniform(4.0, 6.0),
+    "spot_long":     dist.Uniform(4.0, 6.0),
+    "spot_size":     dist.Uniform(10.0, 12.0),
+    "spot_flux":     dist.Uniform(0.65, 0.75),
+    "fac_lat":       dist.Uniform(-25.0, -15.0),
+    "fac_long":      dist.Uniform(160.0, 170.0),
+    "fac_size":      dist.Uniform(15.0, 17.0),
+    "fac_flux":      dist.Uniform(1.05, 1.15),
+    "p_rot":         dist.Normal(jnp.log(TRUE_P_ROT), 1.0),
+    "planet_radius": dist.Uniform(0.095, 0.15),
+    "semimajor_axis":dist.Uniform(4.0, 4.5),
+    "inclination":   dist.Uniform(89.0, 91.0),
+    "ecc_h":         dist.Uniform(-0.01, 0.01),
+    "ecc_k":         dist.Uniform(-0.01, 0.01),
     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    "ldc_q1":        dist.Uniform(0.0, 1.0),
-    "ldc_q2":        dist.Uniform(0.0, 1.0),
+    "ldc_q1":        dist.Uniform(0.39, 0.41),
+    "ldc_q2":        dist.Uniform(0.19, 0.21),
 }
 
 
@@ -326,7 +324,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     arg_periapsis = numpyro.deterministic("arg_periapsis", jnp.arctan2(ecc_k, ecc_h))
     P_orb = numpyro.sample("P_orb", PRIOR_DISTRIBUTIONS["P_orb"])
 
-# --- DYNAMIC CALCULATIONS (JAX) ---
+    # --- DYNAMIC CALCULATIONS (JAX) ---
     
     # Recompute Stellar Rotation Phases based on sampled p_rot
     # We use the static 'times' from the model_dict
