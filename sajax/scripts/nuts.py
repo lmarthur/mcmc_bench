@@ -36,7 +36,7 @@ NUTS_OUTPUT_DIR = OUTPUT_DIR / "nuts"
 NDIM = len(PARAM_NAMES)
 NUM_WARMUP = 250
 NUM_SAMPLES = 1000
-NUM_CHAINS = 4
+NUM_CHAINS = 2
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
@@ -60,8 +60,8 @@ def main(seed: int = 0, save_outputs: bool = True):
     if save_outputs:
         plot_model(filename="sajax_ground_truth.png")
 
-    # --- Diagnostic 1: JAX autodiff vs finite-difference per parameter ---
-    _print("=== Diagnostic 1: JAX grad vs finite-difference grad (h=1e-4) ===")
+    # --- JAX autodiff vs finite-difference per parameter ---
+    _print("===JAX grad vs finite-difference grad diagnostic (h=1e-4) ===")
     warmup_start = jax.tree.map(lambda x: x[0], sample_initial_positions(init_key, 1))
     grad = jax.grad(log_density_fn)(warmup_start)
     h = 1e-4
@@ -91,31 +91,6 @@ def main(seed: int = 0, save_outputs: bool = True):
     warmup = blackjax.window_adaptation(blackjax.nuts, log_density_fn)
     (_, parameters), _ = warmup.run(warmup_key, warmup_start, num_steps=NUM_WARMUP)
     _print(f"  Adapted step size: {parameters['step_size']:.4f}")
-
-    # --- Diagnostic 3: adapted inverse mass matrix ---
-    _print("\n=== Diagnostic 3: Adapted inverse mass matrix ===")
-    inv_mass = parameters["inverse_mass_matrix"]
-    if isinstance(inv_mass, dict):
-        _print(f"  {'Parameter':<22} {'inv_M diag':>14} {'eff. std':>12}")
-        _print("  " + "-" * 50)
-        for name in PARAM_NAMES:
-            v = float(inv_mass[name])
-            eff_std = float(np.sqrt(v)) if v >= 0 else float("nan")
-            _print(f"  {name:<22} {v:>14.4g} {eff_std:>12.4g}")
-    else:
-        inv_mass_arr = np.array(inv_mass)
-        if inv_mass_arr.ndim == 1:
-            _print(f"  {'Parameter':<22} {'inv_M diag':>14} {'eff. std':>12}")
-            _print("  " + "-" * 50)
-            for name, v in zip(PARAM_NAMES, inv_mass_arr):
-                eff_std = float(np.sqrt(v)) if v >= 0 else float("nan")
-                _print(f"  {name:<22} {float(v):>14.4g} {eff_std:>12.4g}")
-        else:
-            _print(f"  {'Parameter':<22} {'inv_M diag':>14}")
-            _print("  " + "-" * 38)
-            for name, v in zip(PARAM_NAMES, np.diag(inv_mass_arr)):
-                _print(f"  {name:<22} {float(v):>14.4g}")
-    _print()
 
     # --- Initialize chains ---
     init_key2, sample_key = jax.random.split(sample_key)
