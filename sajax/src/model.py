@@ -134,7 +134,7 @@ PRIOR_DISTRIBUTIONS = {
     "fac_long":      dist.Uniform(160.0, 170.0),
     "fac_size":      dist.Uniform(15.0, 17.0),
     "fac_flux":      dist.Uniform(1.05, 1.15),
-    "p_rot":         dist.Normal(TRUE_P_ROT, 1.0),
+    "p_rot":         dist.Normal(TRUE_P_ROT, 0.000001),
     "planet_radius": dist.Uniform(0.095, 0.15),
     "semimajor_axis":dist.Uniform(4.0, 4.5),
     "inclination":   dist.Uniform(89.0, 91.0),
@@ -795,10 +795,11 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
 
 
 def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path):
-    """Plot posterior mean light curve vs truth and observations, save to output_dir."""
+    """Plot posterior mean and posterior maximum light curve vs truth and observations, save to output_dir."""
     mean_c = {name: float(np.array(v).mean()) for name, v in constrained_samples.items()}
+    max_c = {name: float(np.array(v).max()) for name, v in constrained_samples.items()}
 
-    lc_bestfit = np.array(
+    lc_mean = np.array(
         _call_sajax(
             TIMES,
             np.array([mean_c["spot_lat"], mean_c["fac_lat"]]),
@@ -817,20 +818,43 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path):
         )["lc"]
     )
 
+    lc_max = np.array(
+        _call_sajax(
+            TIMES,
+            np.array([max_c["spot_lat"], max_c["fac_lat"]]),
+            np.array([max_c["spot_long"], max_c["fac_long"]]),
+            np.array([max_c["spot_size"], max_c["fac_size"]]),
+            np.stack([np.array([max_c["spot_flux"]]), np.array([max_c["fac_flux"]])]),
+            max_c["p_rot"],
+            max_c["planet_radius"],
+            max_c["semimajor_axis"],
+            np.deg2rad(max_c["inclination"]),
+            max_c["eccentricity"],
+            max_c["arg_periapsis"],
+            max_c["P_orb"],
+            max_c["ldc_u1"],
+            max_c["ldc_u2"],
+        )["lc"]
+    )
+
     fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
                                          gridspec_kw={"height_ratios": [3, 1]})
     ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
                   label="Observations", zorder=1)
     ax_lc.plot(TIMES, LC_TRUE, lw=2, color="steelblue", label="True", zorder=2)
-    ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson", linestyle="--",
+    ax_lc.plot(TIMES, lc_mean, lw=2, color="crimson", linestyle="--",
                label="Posterior mean fit", zorder=3)
+    ax_lc.plot(TIMES, lc_max, lw=2, color="darkgreen", linestyle="--",
+               label="Posterior maximum fit", zorder=4)
     ax_lc.set_ylabel("Normalised flux")
     ax_lc.legend(frameon=False)
     ax_lc.spines["top"].set_visible(False)
     ax_lc.spines["right"].set_visible(False)
 
-    residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
-    ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
+    mean_residuals_ppm = (OBS_LIGHT_CURVE - lc_mean) * 1e6
+    max_residuals_ppm = (OBS_LIGHT_CURVE - lc_max) * 1e6
+    ax_res.scatter(TIMES, mean_residuals_ppm, s=4, color="orange", alpha=0.6)
+    ax_res.scatter(TIMES, max_residuals_ppm, s=4, color="darkgreen", alpha=0.6)
     ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
     ax_res.set_xlabel("Time [days]")
     ax_res.set_ylabel("Residuals [ppm]")

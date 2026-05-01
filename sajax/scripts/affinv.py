@@ -36,6 +36,8 @@ from model import (
     OBS_LIGHT_CURVE,
     LC_TRUE,
     TIMES,
+    SIGMA_NOISE,
+    STATIC_MODEL,
 )
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
@@ -154,6 +156,25 @@ def main(seed=0, save_outputs=True):
     for name in PARAM_NAMES:
         vals = np.array(coords_constrained[name])
         _print(f"  {name:20s}  " + "  ".join(f"{v:8.4f}" for v in vals))
+
+    def compute_chi2(constrained: dict, model_dict: dict = STATIC_MODEL) -> float:
+        """Reduced chi-squared (obs vs model) for a set of constrained parameters."""
+        # Ensure all derived quantities are present
+        c = dict(constrained)
+        if "eccentricity" not in c:
+            c["eccentricity"] = c["ecc_h"]**2 + c["ecc_k"]**2
+        if "arg_periapsis" not in c:
+            c["arg_periapsis"] = jnp.arctan2(c["ecc_k"], c["ecc_h"])
+        if "ldc_u1" not in c:
+            c["ldc_u1"] = 2 * jnp.sqrt(c["ldc_q1"]) * c["ldc_q2"]
+        if "ldc_u2" not in c:
+            c["ldc_u2"] = jnp.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"])
+        
+        lc = compute_lc_from_constrained(c, model_dict)
+        n = len(TIMES)
+        return float(jnp.sum(((jnp.array(OBS_LIGHT_CURVE) - lc) / SIGMA_NOISE) ** 2) / n)
+    chi2_truth = compute_chi2(GROUND_TRUTH)
+    print(f"χ² at ground truth: {chi2_truth}")
 
     # --- Initialize sampler ---
     sampler = emcee_jax.EnsembleSampler(log_density_flat)
