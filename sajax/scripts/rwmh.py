@@ -25,10 +25,14 @@ from model import (
     plot_model,
     sample_initial_positions,
     plot_bestfit_lightcurve,
+    compute_chi2,
+    compute_lc_from_constrained,
     OUTPUT_DIR,
     PARAM_NAMES,
     GROUND_TRUTH,
     OBS_LIGHT_CURVE,
+    LC_TRUE,
+    TIMES,
     PRIOR_DISTRIBUTIONS,
 )
 
@@ -60,6 +64,82 @@ _UNC_PRIOR_STDS = {name: _unconstrained_prior_std(d) for name, d in PRIOR_DISTRI
 _SIGMA_MIN = min(_UNC_PRIOR_STDS.values())
 STEP_SIZE = 2.38 / np.sqrt(NDIM) * _SIGMA_MIN
 
+DIAG_STRIDE = 100
+PLOT_STRIDE = 1000
+
+_DIAG_PARAMS = [
+    "spot_lat", "spot_long", "spot_size", "spot_flux",
+    "fac_lat", "fac_long", "fac_size", "fac_flux",
+    "p_rot", "planet_radius", "inclination", "P_orb",
+]
+
+
+def run_step_diagnostics(unc_samples, constrain_fn, save_lcs=False, output_dir=None):
+    """
+    Print per-step chain-mean parameters and reduced chi-squared.
+
+    Parameters
+    ----------
+    unc_samples : dict
+        Each value has shape (NUM_CHAINS, NUM_STEPS) in unconstrained space.
+    constrain_fn : callable
+        Maps an unconstrained dict to a constrained dict (including derived params).
+    """
+    n_chains, n_steps = next(iter(unc_samples.values())).shape
+
+    print(f"\n=== Step-by-Step Diagnostics  "
+          f"(steps 0–{n_steps-1}, stride={DIAG_STRIDE}, {n_chains} chains) ===")
+    print("Values are the chain ensemble mean in constrained space.\n")
+
+    col_w = 13
+    header = f"{'step':>5}  {'chi2_red':>9}  " + "  ".join(f"{p:>{col_w}}" for p in _DIAG_PARAMS)
+    sep    = "=" * len(header)
+    print(header)
+    print(sep)
+
+    if save_lcs and output_dir is not None:
+        lc_dir = output_dir / "step_lcs"
+        lc_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        lc_dir = None
+
+    for step_idx in range(0, n_steps, DIAG_STRIDE):
+        mean_unc = {name: jnp.array(unc_samples[name][:, step_idx].mean())
+                    for name in unc_samples}
+        c = constrain_fn(mean_unc)
+        chi2 = compute_chi2(c)
+        param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
+        print(f"{step_idx:>5}  {chi2:>9.4f}  {param_str}")
+
+        if lc_dir is not None and step_idx % PLOT_STRIDE == 0:
+            lc_model = np.array(compute_lc_from_constrained(c))
+            fig, (ax_lc, ax_res) = plt.subplots(
+                2, 1, figsize=(10, 5), sharex=True,
+                gridspec_kw={"height_ratios": [3, 1]},
+            )
+            ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=3, color="orange", alpha=0.5, label="Obs")
+            ax_lc.plot(TIMES, LC_TRUE, lw=1.5, color="steelblue", label="True")
+            ax_lc.plot(TIMES, lc_model, lw=1.5, color="crimson", ls="--",
+                       label=f"Step {step_idx} mean  χ²_r={chi2:.3f}")
+            ax_lc.legend(frameon=False, fontsize=9)
+            ax_lc.set_ylabel("Flux")
+            ax_lc.spines["top"].set_visible(False)
+            ax_lc.spines["right"].set_visible(False)
+
+            res_ppm = (OBS_LIGHT_CURVE - lc_model) * 1e6
+            ax_res.scatter(TIMES, res_ppm, s=3, color="orange", alpha=0.5)
+            ax_res.axhline(0, color="crimson", lw=1, ls="--")
+            ax_res.set_xlabel("Time [days]")
+            ax_res.set_ylabel("Res. [ppm]")
+            ax_res.spines["top"].set_visible(False)
+            ax_res.spines["right"].set_visible(False)
+
+            fig.tight_layout()
+            fig.savefig(lc_dir / f"lc_step_{step_idx:05d}.png", dpi=100, bbox_inches="tight")
+            plt.close(fig)
+
+    if lc_dir is not None:
+        print(f"\nLC snapshots saved to {lc_dir}/")
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
@@ -95,9 +175,6 @@ def main(seed: int = 0, save_outputs: bool = True):
         vals = np.array(x0_constrained[name])
         _print(f"  {name:20s}  " + "  ".join(f"{v:8.4f}" for v in vals))
 
-    _print("\nDiagnostic: log density at initial positions")
-    _print(f"  {'chain':>6}  {'log_density':>14}  {'finite?':>8}  {'nan?':>6}")
-    _print("  " + "-" * 40)
     init_log_densities = []
     for i in range(NUM_CHAINS):
         x_i = jax.tree.map(lambda leaf: leaf[i], x0)
@@ -128,8 +205,10 @@ def main(seed: int = 0, save_outputs: bool = True):
         _print(f"Running burn-in ({NUM_BURNIN} steps, {NUM_CHAINS} chains)...")
         burnin_keys = jax.random.split(burnin_key, NUM_CHAINS)
         burnin_states, _ = run_chain(burnin_keys, initial_states)
+        burnin_unc_positions = burnin_states.position
         post_burnin_states = jax.tree.map(lambda x: x[:, -1], burnin_states)
     else:
+        burnin_unc_positions = None
         post_burnin_states = initial_states
 
     _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains, {NDIM} params)...")
@@ -145,6 +224,19 @@ def main(seed: int = 0, save_outputs: bool = True):
     # Map unconstrained → constrained for diagnostics and plotting.
     unc_positions = all_states.position
     constrained_positions = jax.vmap(jax.vmap(constrain_fn))(unc_positions)
+
+    if burnin_unc_positions is not None:
+        all_unc_steps = {
+            name: np.concatenate([
+                np.array(burnin_unc_positions[name]), # (NUM_CHAINS, NUM_BURNIN)
+                np.array(unc_positions[name]),         # (NUM_CHAINS, NUM_SAMPLES)
+            ], axis=1)
+            for name in unc_positions
+        }
+    else:
+        all_unc_steps = {name: np.array(unc_positions[name]) for name in unc_positions}
+    run_step_diagnostics(all_unc_steps, constrain_fn, save_lcs=save_outputs,
+                         output_dir=RWMH_OUTPUT_DIR)
 
     acceptance = float(np.mean(np.array(all_infos.acceptance_rate)))
     total_log_density_evals = NUM_CHAINS * (NUM_BURNIN + NUM_SAMPLES)
