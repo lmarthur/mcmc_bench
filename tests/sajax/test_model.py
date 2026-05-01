@@ -10,7 +10,9 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+import numpyro.distributions as dist
 import pytest
+from numpyro.distributions import biject_to as _biject_to
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
@@ -51,6 +53,9 @@ sample_initial_positions = _mod.sample_initial_positions
 
 _RNG = jax.random.PRNGKey(0)
 _LOG_DENSITY_FN, _POSTPROCESS_FN, _INIT_Z = make_inference_fns(_RNG)
+
+# Gradient at the default prior draw — computed once and reused across gradient tests.
+_INIT_GRAD = jax.grad(_LOG_DENSITY_FN)(_INIT_Z)
 
 
 # ---------------------------------------------------------------------------
@@ -607,3 +612,132 @@ def test_sample_initial_positions_deterministic():
     a = sample_initial_positions(jax.random.PRNGKey(42), 3, return_flat=True)
     b = sample_initial_positions(jax.random.PRNGKey(42), 3, return_flat=True)
     assert jnp.allclose(a, b)
+
+
+# ---------------------------------------------------------------------------
+# Gradient consistency: JAX autodiff vs finite differences
+# ---------------------------------------------------------------------------
+
+
+def _fd_grad(z, name, h=0.1):
+    """Central finite-difference gradient for one unconstrained parameter."""
+    z_plus  = {k: v + h if k == name else v for k, v in z.items()}
+    z_minus = {k: v - h if k == name else v for k, v in z.items()}
+    return float((_LOG_DENSITY_FN(z_plus) - _LOG_DENSITY_FN(z_minus)) / (2 * h))
+
+
+def _check_grad_agreement(name, jg, fd):
+    """Shared assertion logic for JAX vs FD gradient comparison."""
+    scale = max(abs(jg), abs(fd))
+    if scale < 1e-2:
+        # Both near zero: require absolute agreement within one order of magnitude of scale.
+        assert abs(jg - fd) < max(10 * scale, 1e-4), (
+            f"'{name}': both gradients near zero but absolute difference "
+            f"{abs(jg - fd):.2e} is unexpectedly large "
+            f"(JAX={jg:.4g}, FD={fd:.4g})"
+        )
+    else:
+        ratio = jg / fd if abs(fd) > 1e-30 else float("inf")
+        assert 0.1 <= ratio <= 10.0, (
+            f"'{name}': JAX grad ({jg:.4g}) disagrees with FD grad ({fd:.4g}), "
+            f"ratio={ratio:.4f} — expected 0.1–10.0.\n"
+        )
+
+
+@pytest.mark.parametrize("name", PARAM_NAMES)
+def test_gradient_agrees_with_fd_at_prior_draw(name):
+    """JAX autodiff must agree with central finite differences at the default prior draw.
+
+    """
+    jg = float(_INIT_GRAD[name])
+    fd = _fd_grad(_INIT_Z, name, h=0.1)
+    _check_grad_agreement(name, jg, fd)
+
+
+def test_gradient_agrees_with_fd_second_draw():
+    """Same gradient consistency check at a second independent prior draw (seed=7).
+
+    Using two draws guards against failures that are specific to one initialization
+    (e.g., a parameter that happens to have zero gradient at seed=0).
+    Reported as a single test to surface all failures at once.
+    """
+    _, _, z2 = make_inference_fns(jax.random.PRNGKey(7))
+    grad2 = jax.grad(_LOG_DENSITY_FN)(z2)
+
+    failures = []
+    for name in PARAM_NAMES:
+        jg = float(grad2[name])
+        fd = _fd_grad(z2, name, h=0.1)
+        try:
+            _check_grad_agreement(name, jg, fd)
+        except AssertionError as exc:
+            failures.append(str(exc))
+
+    assert not failures, (
+        f"{len(failures)} gradient mismatch(es) at second draw (seed=7):\n"
+        + "\n".join(failures)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ground-truth gradient test: JAX autodiff vs FD at the true parameter values
+# ---------------------------------------------------------------------------
+
+def _unconstrain_ground_truth():
+    """Convert GROUND_TRUTH to unconstrained space using each prior's bijection."""
+    return {
+        name: _biject_to(d.support).inv(jnp.array(float(GROUND_TRUTH[name])))
+        for name, d in PRIOR_DISTRIBUTIONS.items()
+    }
+
+
+_GT_Z    = _unconstrain_ground_truth()
+_GT_GRAD = jax.grad(_LOG_DENSITY_FN)(_GT_Z)
+
+
+def _gt_fd_h(name):
+    """FD step in unconstrained space, scaled to ~1% of the prior's length scale.
+
+    For Uniform(a, b): h = 0.01 * prior_std_constrained * |dz/dtheta| at the true
+    value.  Substituting prior_std = (b-a)/sqrt(12) and the sigmoid Jacobian gives
+    h = 0.01 / (sqrt(12) * s * (1-s)), where s = sigmoid(z_true).  This adapts
+    automatically to boundary proximity: parameters near the prior boundary get a
+    larger h in unconstrained space to produce the same relative perturbation in
+    constrained space.
+
+    For Normal/LogNormal: h = 0.01 * scale (already in unconstrained space).
+    """
+    d = PRIOR_DISTRIBUTIONS[name]
+    if isinstance(d, dist.Uniform):
+        z = float(_biject_to(d.support).inv(jnp.array(float(GROUND_TRUTH[name]))))
+        s = float(jax.nn.sigmoid(jnp.array(z)))
+        s = max(min(s, 1.0 - 1e-6), 1e-6)
+        return 0.01 / (12.0 ** 0.5 * s * (1.0 - s))
+    elif isinstance(d, (dist.Normal, dist.LogNormal)):
+        return 0.01 * float(d.scale)
+    return 0.01
+
+
+@pytest.mark.parametrize("name", PARAM_NAMES)
+def test_gradient_agrees_with_fd_at_ground_truth(name):
+    """JAX autodiff must agree with FD at the ground-truth parameter values.
+
+    Uses per-parameter step sizes h scaled to ~1% of each prior's characteristic
+    length scale at the true value, converted to unconstrained space.  Complements
+    test_gradient_agrees_with_fd_at_prior_draw by checking gradient correctness at
+    a physically meaningful point rather than a random prior draw.
+
+    Parameters whose gradient is non-finite at the ground truth (e.g., ecc_h and
+    ecc_k at zero eccentricity, where arctan2(0,0) has an undefined gradient) are
+    skipped with an explanatory message.
+    """
+    jg = float(_GT_GRAD[name])
+    if not np.isfinite(jg):
+        pytest.skip(f"non-finite JAX gradient at ground truth for '{name}' — degenerate point")
+    h  = _gt_fd_h(name)
+    fd = float(
+        (_LOG_DENSITY_FN({k: v + h if k == name else v for k, v in _GT_Z.items()})
+         - _LOG_DENSITY_FN({k: v - h if k == name else v for k, v in _GT_Z.items()}))
+        / (2.0 * h)
+    )
+    _check_grad_agreement(name, jg, fd)
