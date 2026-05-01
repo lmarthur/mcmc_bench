@@ -20,15 +20,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from model import (
-    make_log_density,
+    make_inference_fns,
+    make_constrain_fn,
     plot_model,
-    _call_sajax,
+    sample_initial_positions,
+    plot_bestfit_lightcurve,
     OUTPUT_DIR,
     PARAM_NAMES,
     GROUND_TRUTH,
-    TIMES,
     OBS_LIGHT_CURVE,
-    PRIOR_DISTRIBUTIONS,
 )
 
 NUTS_OUTPUT_DIR = OUTPUT_DIR / "nuts"
@@ -37,17 +37,6 @@ NDIM = len(PARAM_NAMES)
 NUM_WARMUP = 250
 NUM_SAMPLES = 1000
 NUM_CHAINS = 4
-
-
-def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
-    """Sample each chain's starting position independently from the prior."""
-    positions = []
-    for name in PARAM_NAMES:
-        key, subkey = jax.random.split(key)
-        prior_key = name.lower() if name.startswith("LDC") else name
-        samples = PRIOR_DISTRIBUTIONS[prior_key].sample(subkey, sample_shape=(num_chains,))
-        positions.append(samples)
-    return jnp.stack(positions, axis=-1)
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
@@ -65,22 +54,26 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print = print if save_outputs else lambda *a, **kw: None
 
     # --- Model ---
-    log_density_fn = make_log_density()
+    log_density_fn, _, _ = make_inference_fns(init_key, OBS_LIGHT_CURVE)
+    constrain_fn = make_constrain_fn()
+
     if save_outputs:
         plot_model(filename="sajax_ground_truth.png")
 
     # --- Diagnostic 1: JAX autodiff vs finite-difference per parameter ---
     _print("=== Diagnostic 1: JAX grad vs finite-difference grad (h=1e-4) ===")
-    warmup_start = get_initial_positions(init_key, 1)[0]
+    warmup_start = jax.tree.map(lambda x: x[0], sample_initial_positions(init_key, 1))
     grad = jax.grad(log_density_fn)(warmup_start)
     h = 1e-4
     _print(f"  {'Parameter':<22} {'JAX grad':>14} {'FD grad':>14} {'ratio':>10} {'match?':>8}")
     _print("  " + "-" * 70)
-    for i, name in enumerate(PARAM_NAMES):
+    for name in PARAM_NAMES:
+        def perturb(z, delta, _name=name):
+            return {k: v + delta if k == _name else v for k, v in z.items()}
         fd_grad = float(
-            (log_density_fn(warmup_start.at[i].add(h)) - log_density_fn(warmup_start.at[i].add(-h))) / (2 * h)
+            (log_density_fn(perturb(warmup_start, h)) - log_density_fn(perturb(warmup_start, -h))) / (2 * h)
         )
-        jg = float(grad[i])
+        jg = float(grad[name])
         if abs(fd_grad) > 1e-30:
             ratio = jg / fd_grad
         elif abs(jg) < 1e-30:
@@ -101,23 +94,32 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # --- Diagnostic 3: adapted inverse mass matrix ---
     _print("\n=== Diagnostic 3: Adapted inverse mass matrix ===")
-    inv_mass = np.array(parameters["inverse_mass_matrix"])
-    if inv_mass.ndim == 1:
+    inv_mass = parameters["inverse_mass_matrix"]
+    if isinstance(inv_mass, dict):
         _print(f"  {'Parameter':<22} {'inv_M diag':>14} {'eff. std':>12}")
         _print("  " + "-" * 50)
-        for name, v in zip(PARAM_NAMES, inv_mass):
+        for name in PARAM_NAMES:
+            v = float(inv_mass[name])
             eff_std = float(np.sqrt(v)) if v >= 0 else float("nan")
-            _print(f"  {name:<22} {float(v):>14.4g} {eff_std:>12.4g}")
+            _print(f"  {name:<22} {v:>14.4g} {eff_std:>12.4g}")
     else:
-        _print(f"  {'Parameter':<22} {'inv_M diag':>14}")
-        _print("  " + "-" * 38)
-        for name, v in zip(PARAM_NAMES, np.diag(inv_mass)):
-            _print(f"  {name:<22} {float(v):>14.4g}")
+        inv_mass_arr = np.array(inv_mass)
+        if inv_mass_arr.ndim == 1:
+            _print(f"  {'Parameter':<22} {'inv_M diag':>14} {'eff. std':>12}")
+            _print("  " + "-" * 50)
+            for name, v in zip(PARAM_NAMES, inv_mass_arr):
+                eff_std = float(np.sqrt(v)) if v >= 0 else float("nan")
+                _print(f"  {name:<22} {float(v):>14.4g} {eff_std:>12.4g}")
+        else:
+            _print(f"  {'Parameter':<22} {'inv_M diag':>14}")
+            _print("  " + "-" * 38)
+            for name, v in zip(PARAM_NAMES, np.diag(inv_mass_arr)):
+                _print(f"  {name:<22} {float(v):>14.4g}")
     _print()
 
     # --- Initialize chains ---
     init_key2, sample_key = jax.random.split(sample_key)
-    initial_positions = get_initial_positions(init_key2, NUM_CHAINS)
+    initial_positions = sample_initial_positions(init_key2, NUM_CHAINS)
 
     kernel = blackjax.nuts(log_density_fn, **parameters)
     init_fn = jax.vmap(kernel.init)
@@ -133,15 +135,16 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     all_states, all_infos = run_chain(chain_sample_keys, initial_states)
 
-    # all_states.position: (NUM_CHAINS, NUM_SAMPLES, NDIM)
-    samples = np.array(all_states.position)
+    # all_states.position: dict, each leaf shape (NUM_CHAINS, NUM_SAMPLES)
+    unc_positions = all_states.position
+    constrained_positions = jax.vmap(jax.vmap(constrain_fn))(unc_positions)
 
     # --- Diagnostics ---
     num_integration_steps = np.array(all_infos.num_integration_steps)
     total_grad_evals = int(num_integration_steps.sum())
     acceptance = float(np.mean(np.array(all_infos.acceptance_rate)))
 
-    posterior_dict = {PARAM_NAMES[i]: samples[:, :, i] for i in range(NDIM)}
+    posterior_dict = {name: np.array(constrained_positions[name]) for name in PARAM_NAMES}
     idata = az.from_dict(
         posterior=posterior_dict,
         sample_stats={
@@ -157,7 +160,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     saturation_frac = float(np.mean(num_integration_steps == max_steps))
 
     gt_array = np.array([GROUND_TRUTH[p] for p in PARAM_NAMES])
-    posterior_means = samples.mean(axis=(0, 1))
+    posterior_means = np.array([np.array(constrained_positions[p]).mean() for p in PARAM_NAMES])
     param_bias = posterior_means - gt_array
 
     _print("\n=== Diagnostics ===")
@@ -215,19 +218,38 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # --- Plots ---
 
-    # Trace plots for first 6 parameters
-    az.plot_trace(idata, var_names=PARAM_NAMES[:6], figsize=(14, 10))
-    plt.tight_layout()
-    trace_path = NUTS_OUTPUT_DIR / "traces_subset.png"
-    plt.savefig(trace_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    _print(f"Saved trace plot to {trace_path}")
+    def _is_degenerate(arr):
+        # relative std < 1e-6 catches near-constant chains that pass a raw absolute check
+        s = arr.std(axis=1).min()
+        m = abs(arr.mean())
+        return s / (m + 1.0) < 1e-6
 
-    # Corner plot — all parameters
-    az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
+    stuck_params = [
+        p for p in PARAM_NAMES
+        if _is_degenerate(np.array(constrained_positions[p]))
+    ]
+    if stuck_params:
+        print(f"WARNING: {len(stuck_params)} parameter(s) have near-zero within-chain variance "
+              f"(chains stuck): {stuck_params}")
+
+    # Trace plots for first 6 non-stuck parameters
+    plot_vars = [p for p in PARAM_NAMES[:6] if p not in stuck_params]
+    if plot_vars:
+        az.plot_trace(idata, var_names=plot_vars, figsize=(14, 10))
+        plt.tight_layout()
+        trace_path = NUTS_OUTPUT_DIR / "traces_subset.png"
+        plt.savefig(trace_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        _print(f"Saved trace plot to {trace_path}")
+    else:
+        print("WARNING: All parameters are stuck — skipping trace plot.")
+
+    # Corner plot — exclude degenerate parameters to avoid KDE failure
+    corner_vars = [p for p in PARAM_NAMES if p not in stuck_params]
+    az.rcParams["plot.max_subplots"] = len(corner_vars) ** 2
     az.plot_pair(
         idata,
-        var_names=PARAM_NAMES,
+        var_names=corner_vars,
         kind="kde",
         marginals=True,
         figsize=(24, 24),
@@ -238,72 +260,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print(f"Saved full corner plot to {corner_path}")
 
     # Best-fit light curve using posterior mean
-    mean_dict = {name: float(posterior_means[i]) for i, name in enumerate(PARAM_NAMES)}
-
-    lc_bestfit = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([mean_dict["spot_lat"], mean_dict["fac_lat"]]),
-            np.array([mean_dict["spot_long"], mean_dict["fac_long"]]),
-            np.array([mean_dict["spot_size"], mean_dict["fac_size"]]),
-            np.stack([np.array([mean_dict["spot_flux"]]), np.array([mean_dict["fac_flux"]])]),
-            mean_dict["p_rot"],
-            mean_dict["planet_radius"],
-            mean_dict["semimajor_axis"],
-            np.deg2rad(mean_dict["inclination"]),
-            mean_dict["eccentricity"],
-            mean_dict["arg_periapsis"],
-            mean_dict["P_orb"],
-            mean_dict["LDC_u1"],
-            mean_dict["LDC_u2"],
-        )["lc"]
-    )
-
-    lc_true = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
-            np.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
-            np.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
-            np.stack([np.array([GROUND_TRUTH["spot_flux"]]), np.array([GROUND_TRUTH["fac_flux"]])]),
-            GROUND_TRUTH["p_rot"],
-            GROUND_TRUTH["planet_radius"],
-            GROUND_TRUTH["semimajor_axis"],
-            np.deg2rad(GROUND_TRUTH["inclination"]),
-            GROUND_TRUTH["eccentricity"],
-            GROUND_TRUTH["arg_periapsis"],
-            GROUND_TRUTH["P_orb"],
-            GROUND_TRUTH["LDC_u1"],
-            GROUND_TRUTH["LDC_u2"],
-        )["lc"]
-    )
-
-    fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
-                                         gridspec_kw={"height_ratios": [3, 1]})
-
-    ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
-                  label="Observations", zorder=1)
-    ax_lc.plot(TIMES, lc_true, lw=2, color="steelblue", label="True", zorder=2)
-    ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson", linestyle="--",
-               label="Posterior mean fit", zorder=3)
-    ax_lc.set_ylabel("Normalised flux")
-    ax_lc.legend(frameon=False)
-    ax_lc.spines["top"].set_visible(False)
-    ax_lc.spines["right"].set_visible(False)
-
-    residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
-    ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
-    ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
-    ax_res.set_xlabel("Time [days]")
-    ax_res.set_ylabel("Residuals [ppm]")
-    ax_res.spines["top"].set_visible(False)
-    ax_res.spines["right"].set_visible(False)
-
-    fig.tight_layout()
-    lc_path = NUTS_OUTPUT_DIR / "bestfit_lightcurve.png"
-    fig.savefig(lc_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    _print(f"Saved best-fit light curve to {lc_path}")
+    plot_bestfit_lightcurve(constrained_positions, NUTS_OUTPUT_DIR)
 
     return diagnostics
 
