@@ -142,8 +142,8 @@ PRIOR_DISTRIBUTIONS = {
     "ecc_h":         dist.Uniform(-0.01, 0.01),
     "ecc_k":         dist.Uniform(-0.01, 0.01),
     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    "ldc_q1":        dist.Uniform(0.39, 0.41),
-    "ldc_q2":        dist.Uniform(0.19, 0.21),
+    "ldc_q1":        dist.Uniform(0.34, 0.38),
+    "ldc_q2":        dist.Uniform(0.31, 0.35),
 }
 
 #Wide
