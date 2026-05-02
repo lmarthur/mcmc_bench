@@ -46,6 +46,9 @@ def main(seed=0, save_outputs=True):
     if save_outputs:
         plot_model()
 
+    # total timer: covers model construction, JIT compilation, sampling, and to_results
+    t_total = time.perf_counter()
+
     # --- Define JAXNS prior and likelihood ---
     # JAXNS Prior uses a generator (yield) pattern.
     def prior_model():
@@ -62,13 +65,19 @@ def main(seed=0, save_outputs=True):
         model.sanity_check(jax.random.PRNGKey(1), S=100)
 
     # --- Run nested sampler ---
-    ns = jaxns.NestedSampler(model=model,max_samples=MAX_SAMPLES,num_live_points=NUM_LIVE_POINTS)#,difficult_model=True)
+    ns = jaxns.NestedSampler(model=model, max_samples=MAX_SAMPLES, num_live_points=NUM_LIVE_POINTS)
+
+    # AOT compile to exclude JIT from core timer
+    _c_ns = jax.jit(ns).lower(run_key).compile()
+
+    # core timer: nested sampling execution + to_results (needed to get posterior samples), no JIT
+    t_core = time.perf_counter()
 
     _print("Running nested sampling...")
-    t0 = time.perf_counter()
-    termination_reason, state = jax.jit(ns)(run_key)
+    termination_reason, state = _c_ns(run_key)
     results = ns.to_results(termination_reason=termination_reason, state=state)
-    wall_time_s = time.perf_counter() - t0
+    jax.block_until_ready(state)
+    wall_time_core_s = time.perf_counter() - t_core
 
     _print(f"\nTermination reason: {termination_reason}")
 
@@ -86,6 +95,7 @@ def main(seed=0, save_outputs=True):
     x2_samples = np.array(uniform_samples["x2"])  # (NUM_POSTERIOR_DRAWS,)
     # Stack into (1, NUM_POSTERIOR_DRAWS, 2) — a single "chain" for ArviZ
     samples_2d = np.stack([x1_samples, x2_samples], axis=-1)[None, :, :]
+    wall_time_total_s = time.perf_counter() - t_total
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
@@ -127,7 +137,8 @@ def main(seed=0, save_outputs=True):
     _print(f"  Total likelihood evaluations:  {total_likelihood_evals}")
     _print(f"  Likelihood evals / sample:     {results.total_num_likelihood_evaluations / max(1, int(results.total_num_samples)):.1f}")
     _print(f"  ESS per likelihood eval:       {ess_per_likelihood_eval:.4f}")
-    _print(f"  Wall-clock time:               {wall_time_s:.2f}s")
+    _print(f"  Wall-clock time (core):        {wall_time_core_s:.2f}s")
+    _print(f"  Wall-clock time (total):       {wall_time_total_s:.2f}s")
     _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
     _print(f"  Mode weight recovery (empirical vs true):")
@@ -141,7 +152,9 @@ def main(seed=0, save_outputs=True):
     # --- Results ---
     diagnostics = {
         "sampler": "NestedSampling_JAXNS",
-        "wall_time_s": wall_time_s,
+        "wall_time_s": wall_time_core_s,
+        "wall_time_core_s": wall_time_core_s,
+        "wall_time_total_s": wall_time_total_s,
         "num_posterior_draws": NUM_POSTERIOR_DRAWS,
         "prior_low": PRIOR_LOW,
         "prior_high": PRIOR_HIGH,

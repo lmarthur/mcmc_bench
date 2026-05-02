@@ -48,9 +48,12 @@ def main(seed=0, save_outputs=True):
     if save_outputs:
         plot_model()
 
-    t0 = time.perf_counter()
+    # total timer: covers warmup, initialization, JIT compilation, sampling, and host transfer
+    t_total = time.perf_counter()
 
     # --- Warmup: adapt one chain, share parameters across all chains ---
+    # Warmup is inside the total timer but outside the core timer because the sampling
+    # function can only be pre-compiled after warmup determines the kernel parameters.
     _print(f"Running warmup ({NUM_WARMUP} steps)...")
     if NUM_WARMUP > 0:
         warmup_init_key, warmup_key, run_key = jax.random.split(rng_key, 3)
@@ -73,18 +76,27 @@ def main(seed=0, save_outputs=True):
     init_fn = jax.vmap(kernel.init)
     initial_states = init_fn(initial_positions)
 
-    # --- Run chains in parallel with vmap ---
-    _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
     chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
 
     @jax.vmap
     def run_chain(rng_key, initial_state):
         return inference_loop(rng_key, kernel.step, initial_state, NUM_SAMPLES)
 
-    all_states, all_infos = run_chain(chain_sample_keys, initial_states)
+    # AOT compile to exclude JIT from core timer
+    _c_sample = jax.jit(run_chain).lower(chain_sample_keys, initial_states).compile()
+
+    # core timer: sampling only (warmup excluded — see note above)
+    t_core = time.perf_counter()
+
+    # --- Run chains in parallel with vmap ---
+    _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
+    all_states, all_infos = _c_sample(chain_sample_keys, initial_states)
+    jax.block_until_ready(all_states)
+    wall_time_core_s = time.perf_counter() - t_core
 
     # all_states.position: (NUM_CHAINS, NUM_SAMPLES, 2)
     samples = np.array(all_states.position)
+    wall_time_total_s = time.perf_counter() - t_total
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
@@ -150,9 +162,8 @@ def main(seed=0, save_outputs=True):
     _print(summary.to_string())
     _print()
     _print(f"  Bulk ESS per gradient eval: {ess_per_grad:.4f}")
-
-    wall_time_s = time.perf_counter() - t0
-    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time (core):  {wall_time_core_s:.2f}s  [sampling only]")
+    _print(f"  Wall-clock time (total): {wall_time_total_s:.2f}s  [includes warmup + JIT]")
 
     # --- Results ---
     diagnostics = {
@@ -161,7 +172,9 @@ def main(seed=0, save_outputs=True):
         "num_warmup": NUM_WARMUP,
         "num_samples": NUM_SAMPLES,
         "adapted_step_size": float(parameters["step_size"]),
-        "wall_time_s": wall_time_s,
+        "wall_time_s": wall_time_core_s,
+        "wall_time_core_s": wall_time_core_s,
+        "wall_time_total_s": wall_time_total_s,
         "mean_acceptance_rate": float(acceptance),
         "warmup_grad_evals": warmup_grad_evals,
         "total_grad_evals": int(total_grad_evals),
