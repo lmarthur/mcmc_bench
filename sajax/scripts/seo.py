@@ -19,7 +19,6 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore", FutureWarning)
     import arviz as az
 import blackjax
-import blackjax.mcmc.random_walk
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -30,15 +29,27 @@ from model import (
     make_log_density,
     plot_model,
     _call_sajax,
+    compute_chi2,
+    compute_lc_from_constrained,
     OUTPUT_DIR,
     PARAM_NAMES,
     GROUND_TRUTH,
     TIMES,
     OBS_LIGHT_CURVE,
+    LC_TRUE,
     PRIOR_DISTRIBUTIONS,
 )
 
 SEO_OUTPUT_DIR = OUTPUT_DIR / "seo"
+
+DIAG_STRIDE = 100
+PLOT_STRIDE = 1000
+
+_DIAG_PARAMS = [
+    "spot_lat", "spot_long", "spot_size", "spot_flux",
+    "fac_lat", "fac_long", "fac_size", "fac_flux",
+    "p_rot", "planet_radius", "inclination", "P_orb",
+]
 
 # ===========================================================================
 # Tunable parameters
@@ -66,8 +77,8 @@ KERNEL = "rwmh"
 # following the Roberts-Gelman-Gilks (1997) optimal scaling rule. The values below
 # are the global multiplier α (dimensionless). α=1 starts at the rule's prediction;
 # tune cold to ~23% acceptance, hot larger to broaden hot-chain proposals.
-STEP_SIZE_HOT_RWMH = 5.0
-STEP_SIZE_COLD_RWMH = 1.0
+STEP_SIZE_HOT_RWMH = 0.5
+STEP_SIZE_COLD_RWMH = 0.002
 # TODO: MALA step sizes likely need further tuning. With the current values the
 # cold chain freezes near the mode (proposal scale too large for local geometry,
 # and chains can land outside bounded prior support and get pinned at log_p=-inf).
@@ -102,11 +113,14 @@ def make_rwmh_kernel_generator(proposal_scale):
     σ at α=1; the per-chain α is supplied by pt_jax via `params=`.
     """
     def rwmh_kernel_generator(log_p, alpha):
-        sigma = alpha * proposal_scale
-        rmh = blackjax.rmh(
-            log_p,
-            proposal_generator=blackjax.mcmc.random_walk.normal(sigma=sigma),
-        )
+        # Build a custom proposal generator: proposed = current + alpha * proposal_scale * N(0, I).
+        # Position is a flat array so no flatten/unflatten is needed (unlike rwmh.py where
+        # positions are dicts and blackjax.mcmc.random_walk.normal fails on pytree scalars).
+        def _proposal_generator(rng_key, position):
+            noise = alpha * proposal_scale * jax.random.normal(rng_key, shape=position.shape)
+            return position + noise
+
+        rmh = blackjax.rmh(log_p, proposal_generator=_proposal_generator)
 
         def kernel(key, position):
             state = rmh.init(position)
@@ -127,6 +141,73 @@ def mala_kernel_generator(log_p, step_size):
         return new_state.position
 
     return kernel
+
+
+def run_step_diagnostics(cold_samples, save_lcs=False, output_dir=None):
+    """Print per-step cold-chain parameters and reduced chi-squared.
+
+    Parameters
+    ----------
+    cold_samples : array, shape (NUM_SAMPLES, NDIM)
+        Cold-chain samples already in constrained space, indexed by PARAM_NAMES.
+    """
+    n_steps = cold_samples.shape[0]
+
+    print(f"\n=== Step-by-Step Diagnostics  "
+          f"(steps 0–{n_steps-1}, stride={DIAG_STRIDE}) ===")
+    print("Values are the cold-chain sample in constrained space.\n")
+
+    col_w = 13
+    header = f"{'step':>5}  {'chi2_red':>9}  " + "  ".join(f"{p:>{col_w}}" for p in _DIAG_PARAMS)
+    sep    = "=" * len(header)
+    print(header)
+    print(sep)
+
+    if save_lcs and output_dir is not None:
+        lc_dir = output_dir / "step_lcs"
+        lc_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        lc_dir = None
+
+    for step_idx in range(0, n_steps, DIAG_STRIDE):
+        c = dict(zip(PARAM_NAMES, cold_samples[step_idx]))
+        c["eccentricity"] = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
+        c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
+        c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
+        c["ldc_u2"] = float(np.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"]))
+        chi2 = compute_chi2(c)
+        param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
+        print(f"{step_idx:>5}  {chi2:>9.4f}  {param_str}")
+
+        if lc_dir is not None and step_idx % PLOT_STRIDE == 0:
+            lc_model = np.array(compute_lc_from_constrained(c))
+            fig, (ax_lc, ax_res) = plt.subplots(
+                2, 1, figsize=(10, 5), sharex=True,
+                gridspec_kw={"height_ratios": [3, 1]},
+            )
+            ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=3, color="orange", alpha=0.5, label="Obs")
+            ax_lc.plot(TIMES, LC_TRUE, lw=1.5, color="steelblue", label="True")
+            ax_lc.plot(TIMES, lc_model, lw=1.5, color="crimson", ls="--",
+                       label=f"Step {step_idx}  χ²_r={chi2:.3f}")
+            ax_lc.legend(frameon=False, fontsize=9)
+            ax_lc.set_ylabel("Flux")
+            ax_lc.spines["top"].set_visible(False)
+            ax_lc.spines["right"].set_visible(False)
+
+            res_ppm = (OBS_LIGHT_CURVE - lc_model) * 1e6
+            ax_res.scatter(TIMES, res_ppm, s=3, color="orange", alpha=0.5)
+            ax_res.axhline(0, color="crimson", lw=1, ls="--")
+            ax_res.set_xlabel("Time [days]")
+            ax_res.set_ylabel("Res. [ppm]")
+            ax_res.spines["top"].set_visible(False)
+            ax_res.spines["right"].set_visible(False)
+
+            fig.tight_layout()
+            fig.savefig(lc_dir / f"lc_step_{step_idx:05d}.png", dpi=100, bbox_inches="tight")
+            plt.close(fig)
+
+    if lc_dir is not None:
+        print(f"\nLC snapshots saved to {lc_dir}/")
 
 
 def main(seed: int = 0, save_outputs: bool = True):
@@ -220,8 +301,34 @@ def main(seed: int = 0, save_outputs: bool = True):
             _print(f"  {trial:>5}  {prop_lp:>14.4e}  {prop_ref:>14.4e}"
                    f"  {log_mh:>14.4e}  [{vals_str} ...]")
 
+    # --- Diagnostic: vmap consistency check for log_density_fn ---
+    _print("\nVmap consistency check for log_density_fn:")
+    ld_vmap = jax.vmap(log_density_fn)(x0)
+    _print(f"  {'chain':>5}  {'sequential':>14}  {'vmap':>14}  {'match':>6}")
+    for i in range(NUM_CHAINS):
+        seq_val  = init_log_targets[i]
+        vmap_val = float(ld_vmap[i])
+        match    = "OK" if abs(seq_val - vmap_val) < 1.0 else "MISMATCH"
+        _print(f"  {i:>5}  {seq_val:>14.4e}  {vmap_val:>14.4e}  {match:>6}")
+
+    # --- Diagnostic: SEO swap kernel on initial positions ---
+    _print("\nDirect SEO swap kernel test on x0:")
+    swap_diag_key = jax.random.PRNGKey(99)
+    _, swap_rr_test = K_seo(swap_diag_key, x0)
+    _print(f"  {'pair':>6}  {'beta_i':>8}  {'beta_j':>8}  {'rejection_rate':>14}")
+    for i, rr in enumerate(np.array(swap_rr_test)):
+        _print(f"  {i:>3}<->{i+1:>2}  {float(betas[i]):>8.4f}  {float(betas[i+1]):>8.4f}  {rr:>14.4f}")
+
+    # --- Diagnostic: local kernel on initial positions (one step, all chains) ---
+    _print("\nLocal kernel one-step test on x0:")
+    local_diag_key = jax.random.PRNGKey(42)
+    x_after_local = K_ind(local_diag_key, x0)
+    moved = np.any(np.array(x_after_local) != np.array(x0), axis=1)
+    _print(f"  Chains that moved: {np.where(moved)[0].tolist()} / {NUM_CHAINS}")
+    _print(f"  Cold-chain position unchanged: {not bool(moved[-1])}")
+
     # --- Run SEO sampling loop ---
-    _print(f"Running SEO ({KERNEL.upper()} local kernel, {NUM_CHAINS} chains, "
+    _print(f"\nRunning SEO ({KERNEL.upper()} local kernel, {NUM_CHAINS} chains, "
            f"{NUM_SAMPLES} samples, {NUM_WARMUP} warmup, {ndim} params)...")
 
     samples, rejection_rates = pt_jax.swap.seo_sampling_loop(
@@ -256,6 +363,9 @@ def main(seed: int = 0, save_outputs: bool = True):
     frac_unique = len(unique_rows) / NUM_SAMPLES
     _print(f"\n  Unique cold-chain samples: {len(unique_rows)}/{NUM_SAMPLES} ({frac_unique:.1%})")
 
+    if save_outputs:
+        run_step_diagnostics(cold_samples, save_lcs=True, output_dir=SEO_OUTPUT_DIR)
+
     # --- Diagnostics ---
     # MALA: one gradient eval per chain per local step. RWMH: one log-density eval.
     # Swap moves cost only log-density evals in either case.
@@ -265,8 +375,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     posterior_dict = {PARAM_NAMES[i]: cold_samples[None, :, i] for i in range(ndim)}
     _az_log = logging.getLogger("arviz")
     _az_prev = _az_log.level
-    if not save_outputs:
-        _az_log.setLevel(logging.ERROR)
+    _az_log.setLevel(logging.ERROR)  # suppress shape-validation warning (single cold chain)
     idata = az.from_dict(
         posterior=posterior_dict,
         sample_stats={"swap_rejection_rate": np.mean(mean_swap_rejection)},
@@ -355,7 +464,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     az.plot_pair(
         idata,
         var_names=PARAM_NAMES,
-        kind="scatter",
+        kind="kde",
         marginals=True,
         figsize=(24, 24),
     )
@@ -366,6 +475,13 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # Best-fit light curve using posterior mean
     mean_dict = {name: float(posterior_means[i]) for i, name in enumerate(PARAM_NAMES)}
+
+    # Derive parameterized quantities (ecc_h/ecc_k → eccentricity/arg_periapsis,
+    # ldc_q1/ldc_q2 → LDC_u1/LDC_u2 via Kipping 2013).
+    _ecc    = float(mean_dict["ecc_h"] ** 2 + mean_dict["ecc_k"] ** 2)
+    _omega  = float(np.arctan2(mean_dict["ecc_k"], mean_dict["ecc_h"]))
+    _ldc_u1 = float(2 * np.sqrt(mean_dict["ldc_q1"]) * mean_dict["ldc_q2"])
+    _ldc_u2 = float(np.sqrt(mean_dict["ldc_q1"]) * (1 - 2 * mean_dict["ldc_q2"]))
 
     lc_bestfit = np.array(
         _call_sajax(
@@ -378,13 +494,18 @@ def main(seed: int = 0, save_outputs: bool = True):
             mean_dict["planet_radius"],
             mean_dict["semimajor_axis"],
             np.deg2rad(mean_dict["inclination"]),
-            mean_dict["eccentricity"],
-            mean_dict["arg_periapsis"],
+            _ecc,
+            _omega,
             mean_dict["P_orb"],
-            mean_dict["LDC_u1"],
-            mean_dict["LDC_u2"],
+            _ldc_u1,
+            _ldc_u2,
         )["lc"]
     )
+
+    _gt_ecc    = float(GROUND_TRUTH["ecc_h"] ** 2 + GROUND_TRUTH["ecc_k"] ** 2)
+    _gt_omega  = float(np.arctan2(GROUND_TRUTH["ecc_k"], GROUND_TRUTH["ecc_h"]))
+    _gt_ldc_u1 = float(2 * np.sqrt(GROUND_TRUTH["ldc_q1"]) * GROUND_TRUTH["ldc_q2"])
+    _gt_ldc_u2 = float(np.sqrt(GROUND_TRUTH["ldc_q1"]) * (1 - 2 * GROUND_TRUTH["ldc_q2"]))
 
     lc_true = np.array(
         _call_sajax(
@@ -397,11 +518,11 @@ def main(seed: int = 0, save_outputs: bool = True):
             GROUND_TRUTH["planet_radius"],
             GROUND_TRUTH["semimajor_axis"],
             np.deg2rad(GROUND_TRUTH["inclination"]),
-            GROUND_TRUTH["eccentricity"],
-            GROUND_TRUTH["arg_periapsis"],
+            _gt_ecc,
+            _gt_omega,
             GROUND_TRUTH["P_orb"],
-            GROUND_TRUTH["LDC_u1"],
-            GROUND_TRUTH["LDC_u2"],
+            _gt_ldc_u1,
+            _gt_ldc_u2,
         )["lc"]
     )
 
