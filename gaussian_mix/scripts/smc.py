@@ -44,6 +44,9 @@ def main(seed=0, save_outputs=True):
     if save_outputs:
         plot_model()
 
+    # total timer: covers initialization, JIT compilation, sampling, and host transfer
+    t_total = time.perf_counter()
+
     # --- Prior / likelihood split for tempering ---
     # At lambda=0: sample from logprior (broad Gaussian)
     # At lambda=1: sample from logprior + loglikelihood = log_target
@@ -105,7 +108,13 @@ def main(seed=0, save_outputs=True):
     )
     state = _smc_init.init(initial_positions)
 
-    t0 = time.perf_counter()
+    # AOT compile step_fn to exclude JIT from core timer
+    _warmup_key, _compile_key = jax.random.split(loop_key)
+    _c_step = step_fn.lower(_compile_key, state).compile()
+
+    # core timer: SMC loop only, no JIT overhead
+    # Each iteration forces synchronization via float(state.tempering_param).
+    t_core = time.perf_counter()
     all_lambdas = [float(state.tempering_param)]
     all_log_nc = []
     num_steps = 0
@@ -113,7 +122,7 @@ def main(seed=0, save_outputs=True):
     _print(f"Running adaptive tempered SMC ({NUM_PARTICLES} particles)...")
     while state.tempering_param < 1.0 and num_steps < MAX_STEPS:
         loop_key, subkey = jax.random.split(loop_key)
-        state, info = step_fn(subkey, state)
+        state, info = _c_step(subkey, state)
         lam = float(state.tempering_param)
         lnc = float(info.log_likelihood_increment)
         all_lambdas.append(lam)
@@ -127,11 +136,12 @@ def main(seed=0, save_outputs=True):
     else:
         _print(f"  Completed in {num_steps} SMC steps.")
 
-    wall_time_s = time.perf_counter() - t0
+    wall_time_core_s = time.perf_counter() - t_core
 
     # --- Final particles and weights ---
     particles = np.array(state.particles)   # (NUM_PARTICLES, 2)
     weights = np.array(state.weights)       # already normalised
+    wall_time_total_s = time.perf_counter() - t_total
 
     final_ess = float(1.0 / np.sum(weights ** 2))
     log_nc_total = float(np.sum(all_log_nc))
@@ -157,7 +167,8 @@ def main(seed=0, save_outputs=True):
     _print(f"  Log normalizing constant: {log_nc_total:.3f}")
     _print(f"  Final ESS:                {final_ess:.1f} / {NUM_PARTICLES}")
     _print(f"  Total log-density evals:  {int(total_log_density_evals)}")
-    _print(f"  Wall-clock time:          {wall_time_s:.2f}s")
+    _print(f"  Wall-clock time (core):   {wall_time_core_s:.2f}s")
+    _print(f"  Wall-clock time (total):  {wall_time_total_s:.2f}s")
     _print()
     true_weights = np.array(DEFAULT_WEIGHTS)
     _print("  Mode weight recovery (empirical vs true):")
@@ -187,7 +198,9 @@ def main(seed=0, save_outputs=True):
         "prior_low": PRIOR_LOW,
         "prior_high": PRIOR_HIGH,
         "sigma_proposal_formula": "2.38/sqrt(2) * sigma_prior / sqrt(lambda)",
-        "wall_time_s": wall_time_s,
+        "wall_time_s": wall_time_core_s,
+        "wall_time_core_s": wall_time_core_s,
+        "wall_time_total_s": wall_time_total_s,
         "num_smc_steps": num_steps,
         "final_tempering_param": float(state.tempering_param),
         "log_normalizing_constant": log_nc_total,

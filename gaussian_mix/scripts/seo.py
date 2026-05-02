@@ -90,6 +90,9 @@ def main(seed=0, save_outputs=True):
     if save_outputs:
         plot_model()
 
+    # total timer: covers kernel construction, JIT compilation, sampling, and host transfer
+    t_total = time.perf_counter()
+
     # --- Temperature schedule ---
     betas = pt_jax.annealing.annealing_exponential(NUM_CHAINS)
 
@@ -111,29 +114,32 @@ def main(seed=0, save_outputs=True):
         annealing_schedule=betas,
     )
 
-    # --- Initialize: all chains start at origin ---
     x0 = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
 
-    # --- Run SEO sampling loop ---
+    # AOT compile to exclude JIT from core timer; K_ind and K_seo are captured as closure constants
+    def _seo_run(key, x0):
+        return pt_jax.swap.seo_sampling_loop(
+            key=key, x0=x0, kernel_local=K_ind, kernel_seo=K_seo,
+            n_samples=NUM_SAMPLES, warmup=NUM_WARMUP,
+        )
+
+    _c_seo = jax.jit(_seo_run).lower(sample_key, x0).compile()
+
+    # core timer: sampling loop only, no JIT overhead
     _print(f"Running SEO ({kernel_type.upper()} local kernel, {NUM_CHAINS} chains, "
           f"{NUM_SAMPLES} samples, {NUM_WARMUP} warmup)...")
-    t0 = time.perf_counter()
-    samples, rejection_rates = pt_jax.swap.seo_sampling_loop(
-        key=sample_key,
-        x0=x0,
-        kernel_local=K_ind,
-        kernel_seo=K_seo,
-        n_samples=NUM_SAMPLES,
-        warmup=NUM_WARMUP,
-    )
+    t_core = time.perf_counter()
+    samples, rejection_rates = _c_seo(sample_key, x0)
+    jax.block_until_ready(samples)
+    wall_time_core_s = time.perf_counter() - t_core
+
     # samples:         (NUM_SAMPLES, NUM_CHAINS, 2)
     # rejection_rates: (NUM_SAMPLES, NUM_CHAINS - 1)
-    wall_time_s = time.perf_counter() - t0
-
     mean_swap_rejection = np.array(rejection_rates.mean(axis=0))  # (NUM_CHAINS - 1,)
 
     # Cold chain (beta=1, target distribution) is the last chain.
     cold_samples = np.array(samples[:, -1, :])  # (NUM_SAMPLES, 2)
+    wall_time_total_s = time.perf_counter() - t_total
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
@@ -199,12 +205,15 @@ def main(seed=0, save_outputs=True):
     _print(summary.to_string())
     _print()
     _print(f"  Bulk ESS per {cost_label.replace('_', '-')}: {ess_per_cost:.4f}")
-    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time (core):  {wall_time_core_s:.2f}s")
+    _print(f"  Wall-clock time (total): {wall_time_total_s:.2f}s")
 
     # --- Results ---
     diagnostics = {
         "sampler": "SEO_ParallelTempering",
-        "wall_time_s": wall_time_s,
+        "wall_time_s": wall_time_core_s,
+        "wall_time_core_s": wall_time_core_s,
+        "wall_time_total_s": wall_time_total_s,
         "kernel_type": kernel_type,
         "num_chains": NUM_CHAINS,
         "num_warmup": NUM_WARMUP,
