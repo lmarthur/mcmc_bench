@@ -19,14 +19,14 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS, PRIOR_LOW, PRIOR_HIGH
 
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
-NUM_BURNIN = 0
+NUM_BURNIN = 500
 NUM_SAMPLES = 10000
-NUM_CHAINS = 10
-STEP_SIZE = 1.68  # Roberts, Gelman & Gilks (1997): 2.38/sqrt(d) for d=2, targets ~23.4% acceptance
+NUM_CHAINS = 4
+STEP_SIZE = (2.38 / np.sqrt(2)) * (PRIOR_HIGH - PRIOR_LOW) / np.sqrt(12)  # 2.38/sqrt(d) * sigma_prior, d=2
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
@@ -51,7 +51,7 @@ def main(seed=0, save_outputs=True):
     t0 = time.perf_counter()
 
     # --- Initialize chains from random starting positions ---
-    initial_positions = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=-10.0, maxval=10.0)
+    initial_positions = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
 
     kernel = blackjax.rmh(log_density_fn, proposal_generator=blackjax.mcmc.random_walk.normal(sigma=STEP_SIZE))
     init_fn = jax.vmap(kernel.init)
