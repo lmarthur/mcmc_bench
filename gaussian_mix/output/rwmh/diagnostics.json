@@ -6,7 +6,9 @@
   "adapted_step_size": 9.716309313039938,
   "mean_acceptance_rate": 0.11840451508760452,
   "total_log_density_evals": 42000,
-  "wall_time_s": 3.76882591098547,
+  "wall_time_s": 0.40479626299929805,
+  "wall_time_core_s": 0.40479626299929805,
+  "wall_time_total_s": 3.3807082650018856,
   "bulk_ess_per_logp_eval": 0.09171428571428572,
   "mode_weights": [
     0.17575,
