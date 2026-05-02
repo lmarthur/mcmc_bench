@@ -48,7 +48,7 @@ MAX_SAMPLES = 1e5
 NUM_POSTERIOR_DRAWS = 5000
 NUM_LIVE_POINTS = 200
 NUM_SLICES = 50
-DLOGZ_THRESHOLD = 5.0
+DLOGZ_THRESHOLD = 100.0
 
 # Diagnostic stride — print intermediate results every DIAG_STRIDE dead points
 DIAG_STRIDE = 50
@@ -205,6 +205,19 @@ def main(seed=0, save_outputs=True):
         replace=True,
     )
 
+    # --- Build constrained samples with derived quantities ---
+    ecc_h = np.array(uniform_samples["ecc_h"])
+    ecc_k = np.array(uniform_samples["ecc_k"])
+    ldc_q1 = np.array(uniform_samples["ldc_q1"])
+    ldc_q2 = np.array(uniform_samples["ldc_q2"])
+    constrained_with_derived = {
+        **{name: np.array(uniform_samples[name]) for name in PARAM_NAMES},
+        "eccentricity": ecc_h**2 + ecc_k**2,
+        "arg_periapsis": np.arctan2(ecc_k, ecc_h),
+        "ldc_u1": 2 * np.sqrt(ldc_q1) * ldc_q2,
+        "ldc_u2": np.sqrt(ldc_q1) * (1 - 2 * ldc_q2),
+    }
+
     # --- Diagnostics ---
     jaxns_ess = float(results.ESS)
     total_likelihood_evals = int(results.total_num_likelihood_evaluations)
@@ -276,7 +289,7 @@ def main(seed=0, save_outputs=True):
 
     # --- Plots ---
 
-    # NS shrinkage curve
+    # 1. NS shrinkage curve
     fig, ax = plt.subplots(figsize=(10, 4))
     log_L_dead = np.array(results.log_L_samples[: int(results.total_num_samples)])
     ax.plot(log_L_dead, lw=0.6, color="steelblue", alpha=0.8)
@@ -291,34 +304,74 @@ def main(seed=0, save_outputs=True):
     plt.close(fig)
     _print(f"Saved shrinkage plot to {shrinkage_path}")
 
-    # Corner plot — all parameters
-    az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
-    az.plot_pair(
+    # 2. Corner plot — all parameters with truth / MAP / mean reference lines
+    n_params = len(PARAM_NAMES)
+    az.rcParams["plot.max_subplots"] = n_params ** 2
+
+    axes = az.plot_pair(
         idata,
         var_names=PARAM_NAMES,
         kind="kde",
         marginals=True,
         figsize=(24, 24),
     )
+
+    # Reference values for each parameter
+    truth_vals = [float(GROUND_TRUTH[p]) for p in PARAM_NAMES]
+    mean_vals  = [float(posterior_means[i]) for i in range(n_params)]
+
+    # Consistent colors
+    color_truth = "steelblue"
+    color_mean  = "crimson"
+    lw = 1.5
+    marker_size = 30
+
+    for i in range(n_params):
+        for j in range(n_params):
+            ax = axes[i, j]
+            if ax is None:
+                continue
+
+            if i == j:
+                ax.axvline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.8)
+                ax.axvline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.8)
+
+            elif i > j:
+                ax.axvline(truth_vals[j], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                ax.axvline(mean_vals[j],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                ax.axhline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                ax.axhline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                ax.scatter(truth_vals[j], truth_vals[i], color=color_truth,
+                           marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+                ax.scatter(mean_vals[j],  mean_vals[i],  color=color_mean,
+                           marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+
+    from matplotlib.lines import Line2D
+    fig = axes[0, 0].get_figure()
+    legend_handles = [
+        Line2D([0], [0], color=color_truth, ls="-",  lw=lw, label="Truth"),
+        Line2D([0], [0], color=color_mean,  ls=":",  lw=lw, label="Posterior mean"),
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="upper right",
+        bbox_to_anchor=(0.95, 0.95),
+        frameon=True,
+        framealpha=0.9,
+        fontsize=12,
+        title="Reference",
+        title_fontsize=13,
+    )
+
     corner_path = NS_OUTPUT_DIR / "corner_all.png"
-    plt.savefig(corner_path, dpi=120, bbox_inches="tight")
-    plt.close()
+    fig.savefig(corner_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
     _print(f"Saved full corner plot to {corner_path}")
 
-    # Best-fit light curve using posterior mean.
-    # Augment uniform_samples with derived quantities for plot_bestfit_lightcurve.
-    ecc_h = np.array(uniform_samples["ecc_h"])
-    ecc_k = np.array(uniform_samples["ecc_k"])
-    ldc_q1 = np.array(uniform_samples["ldc_q1"])
-    ldc_q2 = np.array(uniform_samples["ldc_q2"])
-    constrained_with_derived = {
-        **{name: np.array(uniform_samples[name]) for name in PRIOR_DISTRIBUTIONS},
-        "eccentricity": ecc_h**2 + ecc_k**2,
-        "arg_periapsis": np.arctan2(ecc_k, ecc_h),
-        "ldc_u1": 2 * np.sqrt(ldc_q1) * ldc_q2,
-        "ldc_u2": np.sqrt(ldc_q1) * (1 - 2 * ldc_q2),
-    }
-    plot_bestfit_lightcurve(constrained_with_derived, NS_OUTPUT_DIR)
+    # 3. Best-fit light curve — delegate to model.py
+    plot_bestfit_lightcurve(constrained_with_derived, NS_OUTPUT_DIR, map_params=None)
 
     return diagnostics
 

@@ -303,6 +303,20 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     posterior_means = (particles * weights[:, None]).sum(axis=0)
 
+    # --- Build constrained samples (resampled to equal weights) ---
+    rng = np.random.default_rng(seed + 1)
+    indices   = rng.choice(NUM_PARTICLES, size=NUM_PARTICLES, replace=True, p=weights)
+    resampled = particles[indices]
+    ecc_h_r  = resampled[:, PARAM_NAMES.index("ecc_h")]
+    ecc_k_r  = resampled[:, PARAM_NAMES.index("ecc_k")]
+    ldc_q1_r = resampled[:, PARAM_NAMES.index("ldc_q1")]
+    ldc_q2_r = resampled[:, PARAM_NAMES.index("ldc_q2")]
+    constrained_samples = {PARAM_NAMES[i]: resampled[:, i] for i in range(NDIM)}
+    constrained_samples["eccentricity"]  = ecc_h_r ** 2 + ecc_k_r ** 2
+    constrained_samples["arg_periapsis"] = np.arctan2(ecc_k_r, ecc_h_r)
+    constrained_samples["ldc_u1"] = 2 * np.sqrt(ldc_q1_r) * ldc_q2_r
+    constrained_samples["ldc_u2"] = np.sqrt(ldc_q1_r) * (1 - 2 * ldc_q2_r)
+
     # --- ArviZ summary (treat weighted particles as a single chain) ---
     posterior_dict = {PARAM_NAMES[i]: particles[None, :, i] for i in range(NDIM)}
     _az_log = logging.getLogger("arviz")
@@ -442,35 +456,74 @@ def main(seed: int = 0, save_outputs: bool = True):
     plt.close()
     _print(f"Saved trace plot to {trace_path}")
 
-    # Corner plot — all parameters
-    az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
-    az.plot_pair(
+    # Corner plot — all parameters with truth / MAP / mean reference lines
+    n_params = len(PARAM_NAMES)
+    az.rcParams["plot.max_subplots"] = n_params ** 2
+
+    axes = az.plot_pair(
         idata,
         var_names=PARAM_NAMES,
         kind="kde",
         marginals=True,
         figsize=(24, 24),
     )
+
+    # Reference values for each parameter
+    truth_vals = [float(GROUND_TRUTH[p]) for p in PARAM_NAMES]
+    mean_vals  = [float(posterior_means[i]) for i in range(n_params)]
+
+    # Consistent colors
+    color_truth = "steelblue"
+    color_mean  = "crimson"
+    lw = 1.5
+    marker_size = 30
+
+    for i in range(n_params):
+        for j in range(n_params):
+            ax = axes[i, j]
+            if ax is None:
+                continue
+
+            if i == j:
+                ax.axvline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.8)
+                ax.axvline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.8)
+
+            elif i > j:
+                ax.axvline(truth_vals[j], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                ax.axvline(mean_vals[j],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                ax.axhline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                ax.axhline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                ax.scatter(truth_vals[j], truth_vals[i], color=color_truth,
+                           marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+                ax.scatter(mean_vals[j],  mean_vals[i],  color=color_mean,
+                           marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+
+    from matplotlib.lines import Line2D
+    fig = axes[0, 0].get_figure()
+    legend_handles = [
+        Line2D([0], [0], color=color_truth, ls="-",  lw=lw, label="Truth"),
+        Line2D([0], [0], color=color_mean,  ls=":",  lw=lw, label="Posterior mean"),
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="upper right",
+        bbox_to_anchor=(0.95, 0.95),
+        frameon=True,
+        framealpha=0.9,
+        fontsize=12,
+        title="Reference",
+        title_fontsize=13,
+    )
+
     corner_path = SMC_OUTPUT_DIR / "corner_all.png"
-    plt.savefig(corner_path, dpi=120, bbox_inches="tight")
-    plt.close()
+    fig.savefig(corner_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
     _print(f"Saved full corner plot to {corner_path}")
 
-    # Best-fit LC: resample to equal weights so plot_bestfit_lightcurve's
-    # unweighted .mean() and .max() give meaningful posterior statistics.
-    rng = np.random.default_rng(seed + 1)
-    indices   = rng.choice(NUM_PARTICLES, size=NUM_PARTICLES, replace=True, p=weights)
-    resampled = particles[indices]
-    ecc_h_r  = resampled[:, PARAM_NAMES.index("ecc_h")]
-    ecc_k_r  = resampled[:, PARAM_NAMES.index("ecc_k")]
-    ldc_q1_r = resampled[:, PARAM_NAMES.index("ldc_q1")]
-    ldc_q2_r = resampled[:, PARAM_NAMES.index("ldc_q2")]
-    constrained_samples = {PARAM_NAMES[i]: resampled[:, i] for i in range(NDIM)}
-    constrained_samples["eccentricity"]  = ecc_h_r ** 2 + ecc_k_r ** 2
-    constrained_samples["arg_periapsis"] = np.arctan2(ecc_k_r, ecc_h_r)
-    constrained_samples["ldc_u1"] = 2 * np.sqrt(ldc_q1_r) * ldc_q2_r
-    constrained_samples["ldc_u2"] = np.sqrt(ldc_q1_r) * (1 - 2 * ldc_q2_r)
-    plot_bestfit_lightcurve(constrained_samples, SMC_OUTPUT_DIR)
+    # Best-fit light curve — delegate to model.py
+    plot_bestfit_lightcurve(constrained_samples, SMC_OUTPUT_DIR, map_params=None)
 
     return diagnostics
 
