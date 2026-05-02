@@ -35,6 +35,9 @@ DEFAULT_MEANS = jnp.stack([_R * jnp.cos(_ANGLES), _R * jnp.sin(_ANGLES)], axis=-
 DEFAULT_SCALES = jnp.ones(8)
 DEFAULT_WEIGHTS = jnp.array([0.175, 0.075, 0.175, 0.075, 0.175, 0.075, 0.175, 0.075])
 
+PRIOR_LOW = -10.0   # uniform prior bounds on each dimension
+PRIOR_HIGH = 10.0
+
 
 def gaussian_mixture(means=DEFAULT_MEANS, scales=DEFAULT_SCALES, weights=DEFAULT_WEIGHTS):
     """

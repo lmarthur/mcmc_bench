@@ -19,13 +19,13 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS, PRIOR_LOW, PRIOR_HIGH
 
 NUTS_OUTPUT_DIR = OUTPUT_DIR / "nuts"
 
-NUM_WARMUP = 0
+NUM_WARMUP = 1000
 NUM_SAMPLES = 5000
-NUM_CHAINS = 5
+NUM_CHAINS = 4
 NUTS_DEFAULT_STEP_SIZE = 0.5  # used when NUM_WARMUP == 0
 
 
@@ -55,9 +55,9 @@ def main(seed=0, save_outputs=True):
     if NUM_WARMUP > 0:
         warmup_init_key, warmup_key, run_key = jax.random.split(rng_key, 3)
         warmup = blackjax.window_adaptation(blackjax.nuts, log_density_fn)
-        warmup_start = jax.random.uniform(warmup_init_key, shape=(2,), minval=-10.0, maxval=10.0)
+        warmup_start = jax.random.uniform(warmup_init_key, shape=(2,), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
         (_, parameters), warmup_infos = warmup.run(warmup_key, warmup_start, num_steps=NUM_WARMUP)
-        warmup_grad_evals = int(warmup_infos.num_integration_steps.sum())
+        warmup_grad_evals = int(warmup_infos.info.num_integration_steps.sum())
         _print(f"  Adapted step size: {parameters['step_size']:.4f}")
     else:
         run_key = rng_key
@@ -67,7 +67,7 @@ def main(seed=0, save_outputs=True):
 
     # --- Initialize chains from random starting positions ---
     init_key, sample_key = jax.random.split(run_key)
-    initial_positions = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=-10.0, maxval=10.0)
+    initial_positions = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
 
     kernel = blackjax.nuts(log_density_fn, **parameters)
     init_fn = jax.vmap(kernel.init)
