@@ -23,33 +23,26 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-import numpyro.distributions as dist
 import pt_jax
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS, PRIOR_LOW, PRIOR_HIGH
 
 DEO_OUTPUT_DIR = OUTPUT_DIR / "deo"
 
 # Local exploration kernel: "mala" (gradient-based) or "rwmh" (gradient-free).
-KERNEL = "mala"
+KERNEL = "rwmh"
 
-NUM_CHAINS = 15
-NUM_SAMPLES = 10000
-NUM_WARMUP = 0
-# Per-chain step sizes: larger for hot chains (broad exploration), smaller for cold.
-STEP_SIZE_HOT = 0.5
-STEP_SIZE_COLD = 0.15
+NUM_CHAINS = 8
+NUM_SAMPLES = 2500
+NUM_WARMUP = 250
 
 
 # ---------------------------------------------------------------------------
-# Reference distribution: isotropic Gaussian broad enough to cover the mixture
-# (components sit on a circle of radius 7).
+# Reference distribution: uniform prior over [PRIOR_LOW, PRIOR_HIGH]^2.
 # ---------------------------------------------------------------------------
-_REF_SCALE = 10.0
-
 
 def log_ref(x):
-    return dist.Normal(jnp.zeros(2), _REF_SCALE).to_event().log_prob(x)
+    return jax.scipy.stats.uniform.logpdf(x, loc=PRIOR_LOW, scale=PRIOR_HIGH - PRIOR_LOW).sum()
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +93,8 @@ def main(seed=0, save_outputs=True):
     betas = pt_jax.annealing.annealing_exponential(NUM_CHAINS)
 
     # --- Build kernels ---
-    step_sizes = jnp.linspace(STEP_SIZE_HOT, STEP_SIZE_COLD, NUM_CHAINS)
+    sigma_prior = (PRIOR_HIGH - PRIOR_LOW) / jnp.sqrt(12)
+    step_sizes = (2.38 / jnp.sqrt(2)) * sigma_prior / jnp.sqrt(betas)
     kernel_generator = mala_kernel_generator if kernel_type == "mala" else rwmh_kernel_generator
 
     K_ind = pt_jax.kernels.generate_independent_annealed_kernel(
@@ -116,7 +110,7 @@ def main(seed=0, save_outputs=True):
         annealing_schedule=betas,
     )
 
-    x0 = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=-10.0, maxval=10.0)
+    x0 = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
 
     # --- Run DEO sampling loop ---
     _print(f"Running DEO ({kernel_type.upper()} local kernel, {NUM_CHAINS} chains, "

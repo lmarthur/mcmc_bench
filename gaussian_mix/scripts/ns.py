@@ -25,17 +25,16 @@ import tensorflow_probability.substrates.jax as tfp
 
 # from jaxns import DefaultNestedSampler, Model, Prior, resample
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS, PRIOR_LOW, PRIOR_HIGH
 
 tfpd = tfp.distributions
 
 NS_OUTPUT_DIR = OUTPUT_DIR / "ns"
 
 
-PRIOR_SCALE = 10.0         # half-width of the uniform prior on each dimension
 MAX_SAMPLES = 1e5          # Max samples budget — nested sampling runs until convergence, but this caps cost.
 NUM_POSTERIOR_DRAWS = 5000 # Number of uniformly-weighted posterior draws to resample for diagnostics/plots.
-NUM_LIVE_POINTS = 500      # Number of live points for nested sampling — more points gives better accuracy but higher cost.
+NUM_LIVE_POINTS = 1000      # Number of live points for nested sampling — more points gives better accuracy but higher cost.
 
 
 def main(seed=0, save_outputs=True):
@@ -51,10 +50,10 @@ def main(seed=0, save_outputs=True):
     # JAXNS Prior uses a generator (yield) pattern.
     def prior_model():
         x1 = yield jaxns.Prior(
-            tfpd.Uniform(low=-PRIOR_SCALE, high=PRIOR_SCALE), name="x1"
+            tfpd.Uniform(low=PRIOR_LOW, high=PRIOR_HIGH), name="x1"
         )
         x2 = yield jaxns.Prior(
-            tfpd.Uniform(low=-PRIOR_SCALE, high=PRIOR_SCALE), name="x2"
+            tfpd.Uniform(low=PRIOR_LOW, high=PRIOR_HIGH), name="x2"
         )
         return jnp.stack([x1, x2])
 
@@ -144,7 +143,8 @@ def main(seed=0, save_outputs=True):
         "sampler": "NestedSampling_JAXNS",
         "wall_time_s": wall_time_s,
         "num_posterior_draws": NUM_POSTERIOR_DRAWS,
-        "prior_scale": PRIOR_SCALE,
+        "prior_low": PRIOR_LOW,
+        "prior_high": PRIOR_HIGH,
         "log_Z_mean": log_z,
         "log_Z_uncert": log_z_uncert,
         "total_likelihood_evals": total_likelihood_evals,

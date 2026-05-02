@@ -1,25 +1,25 @@
 {
   "sampler": "NUTS",
-  "num_chains": 5,
-  "num_warmup": 0,
+  "num_chains": 4,
+  "num_warmup": 1000,
   "num_samples": 5000,
-  "adapted_step_size": 0.5,
-  "wall_time_s": 2.6933457760001147,
-  "mean_acceptance_rate": 0.9745010733604431,
-  "warmup_grad_evals": 0,
-  "total_grad_evals": 156496,
-  "mean_integration_steps": 6.25984,
-  "max_integration_steps": 63,
-  "tree_depth_saturation": 8e-05,
+  "adapted_step_size": 0.2455490529537201,
+  "wall_time_s": 11.326067654998042,
+  "mean_acceptance_rate": 0.9028022289276123,
+  "warmup_grad_evals": 4337,
+  "total_grad_evals": 89755,
+  "mean_integration_steps": 4.2709,
+  "max_integration_steps": 27,
+  "tree_depth_saturation": 0.0001,
   "mode_weights": [
-    0.164,
-    0.0662,
-    0.17052,
-    0.08924,
-    0.1842,
-    0.06672,
-    0.18308,
-    0.07604
+    0.2037,
+    0.0962,
+    0.1907,
+    0.07285,
+    0.14495,
+    0.06155,
+    0.154,
+    0.07605
   ],
   "true_mode_weights": [
     0.17499999701976776,
@@ -32,50 +32,49 @@
     0.07500000298023224
   ],
   "inter_mode_transitions": [
-    160,
-    183,
-    158,
-    170,
-    168
+    187,
+    176,
+    190,
+    207
   ],
   "stuck_chains": [],
-  "bulk_ess_per_grad_eval": 0.001885032205295982,
+  "bulk_ess_per_grad_eval": 0.002963623196479305,
   "arviz_summary": {
     "mean": {
-      "x1": -0.22,
-      "x2": -0.015
+      "x1": 0.597,
+      "x2": 0.429
     },
     "sd": {
-      "x1": 5.026,
-      "x2": 5.074
+      "x1": 5.025,
+      "x2": 5.027
     },
     "hdi_3%": {
-      "x1": -7.996,
-      "x2": -7.999
+      "x1": -7.656,
+      "x2": -7.705
     },
     "hdi_97%": {
-      "x1": 7.846,
-      "x2": 7.925
+      "x1": 8.202,
+      "x2": 8.145
     },
     "mcse_mean": {
-      "x1": 0.358,
-      "x2": 0.604
+      "x1": 0.411,
+      "x2": 0.508
     },
     "mcse_sd": {
-      "x1": 0.124,
-      "x2": 0.123
+      "x1": 0.142,
+      "x2": 0.144
     },
     "ess_bulk": {
-      "x1": 214.0,
-      "x2": 81.0
+      "x1": 162.0,
+      "x2": 104.0
     },
     "ess_tail": {
-      "x1": 1033.0,
-      "x2": 445.0
+      "x1": 637.0,
+      "x2": 459.0
     },
     "r_hat": {
       "x1": 1.02,
-      "x2": 1.06
+      "x2": 1.05
     }
   }
 }
