@@ -48,7 +48,7 @@ NDIM = len(PARAM_NAMES)
 # Diagnostic stride controls — print a table row every DIAG_STRIDE steps,
 # save an LC snapshot every PLOT_STRIDE steps.
 DIAG_STRIDE = 500
-PLOT_STRIDE = 100
+PLOT_STRIDE = 50
 
 
 

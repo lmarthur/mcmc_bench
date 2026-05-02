@@ -147,7 +147,7 @@ PRIOR_DISTRIBUTIONS = {
     "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
     "planet_radius": dist.Uniform(0.095, 0.15),
     # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
-    "semimajor_axis":dist.Uniform(4.0, 4.5),
+    "semimajor_axis":dist.Uniform(0.0, 50.0),
     # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
     # "inclination":   dist.Uniform(89.0, 91.0),
     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
