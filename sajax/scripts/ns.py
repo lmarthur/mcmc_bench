@@ -80,13 +80,15 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
     """
     Analyze dead points from nested sampling and print diagnostics at regular intervals.
     
-    Mimics the step-by-step diagnostics from MCMC, showing how parameters evolve
-    through the dead point shrinkage.
+    Saves an animated GIF of LC snapshots to output_dir/lc_evolution.gif
+    every PLOT_STRIDE dead points.
     """
+    from io import BytesIO
+    from PIL import Image
+
     constrain_fn = make_constrain_fn()
     
-    # Extract samples (dead points) in order
-    samples_dict = results.samples  # dict with keys matching PARAM_NAMES
+    samples_dict = results.samples
     log_L = np.array(results.log_L_samples[: int(results.total_num_samples)])
     log_weights = np.array(results.log_dp_mean[: int(results.total_num_samples)])
     
@@ -101,31 +103,22 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
     print(header)
     print(sep)
     
-    if output_dir is not None:
-        lc_dir = output_dir / "step_lcs"
-        lc_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        lc_dir = None
+    frames = []
     
-    # Iterate through dead points at regular intervals
     for idx in range(0, n_dead, DIAG_STRIDE):
-        # Extract this dead point
         constrained = {name: np.array(samples_dict[name])[idx] for name in PARAM_NAMES}
         
-        # Add derived quantities
         constrained["eccentricity"] = constrained["ecc_h"]**2 + constrained["ecc_k"]**2
         constrained["arg_periapsis"] = np.arctan2(constrained["ecc_k"], constrained["ecc_h"])
         constrained["ldc_u1"] = 2 * np.sqrt(constrained["ldc_q1"]) * constrained["ldc_q2"]
         constrained["ldc_u2"] = np.sqrt(constrained["ldc_q1"]) * (1 - 2 * constrained["ldc_q2"])
 
-        # Compute chi-squared
         chi2 = compute_chi2(constrained)
         
         param_str = "  ".join(f"{float(constrained[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
         print(f"{idx:>6}  {log_L[idx]:>10.3f}  {chi2:>9.4f}  {param_str}")
         
-        # Save LC snapshot every PLOT_STRIDE steps
-        if lc_dir is not None and idx % PLOT_STRIDE == 0:
+        if output_dir is not None and idx % PLOT_STRIDE == 0:
             lc_model = np.array(compute_lc_from_constrained(constrained))
             fig, (ax_lc, ax_res) = plt.subplots(
                 2, 1, figsize=(10, 5), sharex=True,
@@ -149,11 +142,24 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
             ax_res.spines["right"].set_visible(False)
             
             fig.tight_layout()
-            fig.savefig(lc_dir / f"lc_deadpoint_{idx:05d}.png", dpi=100, bbox_inches="tight")
+
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
             plt.close(fig)
+            buf.seek(0)
+            frames.append(Image.open(buf).convert("RGBA"))
     
-    if lc_dir is not None:
-        print(f"\nLC snapshots saved to {lc_dir}/")
+    if frames and output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        gif_path = output_dir / "lc_evolution.gif"
+        frames[0].save(
+            gif_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=500,
+            loop=0,
+        )
+        print(f"\nSaved LC evolution GIF ({len(frames)} frames) to {gif_path}")
 
 
 def main(seed=0, save_outputs=True):

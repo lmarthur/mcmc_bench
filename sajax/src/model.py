@@ -143,19 +143,19 @@ PRIOR_DISTRIBUTIONS = {
     # "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
     "fac_flux":      dist.Uniform(1.05, 1.15),
     # "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
-    "p_rot":         dist.Normal(TRUE_P_ROT, 0.001),
-    # "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
+    # "p_rot":         dist.Normal(TRUE_P_ROT, 0.001),
+    "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
     "planet_radius": dist.Uniform(0.095, 0.15),
     # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
     "semimajor_axis":dist.Uniform(4.0, 4.5),
     # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
-    "inclination":   dist.Uniform(89.0, 91.0),
-    # "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-    "ecc_h":         dist.Uniform(-0.01, 0.01),
-    # "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
-    "ecc_k":         dist.Uniform(-0.01, 0.01),
-    # "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
-    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
+    # "inclination":   dist.Uniform(89.0, 91.0),
+    "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
+    # "ecc_h":         dist.Uniform(-0.01, 0.01),
+    "ecc_h":         dist.Uniform(-1.0, 1.0),
+    # "ecc_k":         dist.Uniform(-0.01, 0.01),
+    "ecc_k":         dist.Uniform(-1.0, 1.0),
+    "P_orb":         dist.LogNormal(jnp.log(TRUE_P_ORB), 0.0005),
     # "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     # "ldc_q1":        dist.Uniform(0.34, 0.38),
     "ldc_q1":        dist.Uniform(0.0, 1.0),
@@ -874,7 +874,7 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path, map_par
             mean_c["ldc_u2"],
         )["lc"]
     )
-    
+
     fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
                                          gridspec_kw={"height_ratios": [3, 1]})
     ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,

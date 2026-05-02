@@ -40,15 +40,15 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 1000
-NUM_SAMPLES = 2000
+NUM_BURNIN = 4000
+NUM_SAMPLES = 8000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
 # Diagnostic stride controls — print a table row every DIAG_STRIDE steps,
 # save an LC snapshot every PLOT_STRIDE steps.
-DIAG_STRIDE = 100
-PLOT_STRIDE = 1000
+DIAG_STRIDE = 500
+PLOT_STRIDE = 100
 
 
 
@@ -64,14 +64,17 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     Iterate through the full sample trace (including burn-in) and print a
     per-step table of walker-mean parameters and reduced chi-squared.
 
-    Saves an LC snapshot to output_dir/step_lcs/ every PLOT_STRIDE steps when
-    save_lcs=True.
+    Saves an animated GIF of LC snapshots to output_dir/lc_evolution.gif
+    every PLOT_STRIDE steps when save_lcs=True.
 
     Parameters
     ----------
     raw : ndarray, shape (NUM_STEPS, NUM_WALKERS, NDIM)
         Raw unconstrained samples straight from trace.samples.coordinates.
     """
+    from io import BytesIO
+    from PIL import Image
+
     n_steps, n_walkers, _ = raw.shape
 
     print(f"\n=== Step-by-Step Diagnostics  "
@@ -84,11 +87,7 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     print(header)
     print(sep)
 
-    if save_lcs and output_dir is not None:
-        lc_dir = output_dir / "step_lcs"
-        lc_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        lc_dir = None
+    frames = []
 
     for step_idx in range(0, n_steps, DIAG_STRIDE):
         mean_unc = jnp.array(raw[step_idx].mean(axis=0))
@@ -98,7 +97,7 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
         param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
         print(f"{step_idx:>5}  {chi2:>9.4f}  {param_str}")
 
-        if lc_dir is not None and step_idx % PLOT_STRIDE == 0:
+        if save_lcs and output_dir is not None and step_idx % PLOT_STRIDE == 0:
             lc_model = np.array(compute_lc_from_constrained(c))
             fig, (ax_lc, ax_res) = plt.subplots(
                 2, 1, figsize=(10, 5), sharex=True,
@@ -122,11 +121,25 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
             ax_res.spines["right"].set_visible(False)
 
             fig.tight_layout()
-            fig.savefig(lc_dir / f"lc_step_{step_idx:05d}.png", dpi=100, bbox_inches="tight")
-            plt.close(fig)
 
-    if lc_dir is not None:
-        print(f"\nLC snapshots saved to {lc_dir}/")
+            # Render figure to in-memory PIL Image
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            frames.append(Image.open(buf).convert("RGBA"))
+
+    if frames and output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        gif_path = output_dir / "lc_evolution.gif"
+        frames[0].save(
+            gif_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=500,   # ms per frame
+            loop=0,         # loop forever
+        )
+        print(f"\nSaved LC evolution GIF ({len(frames)} frames) to {gif_path}")
 
 
 def main(seed=0, save_outputs=True):
