@@ -25,16 +25,13 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS, PRIOR_LOW, PRIOR_HIGH
 
 SMC_OUTPUT_DIR = OUTPUT_DIR / "smc"
 
 NUM_PARTICLES = 2000
-TARGET_ESS = 0.5    # target ESS fraction for adaptive temperature step
+TARGET_ESS = 0.75    # target ESS fraction for adaptive temperature step
 NUM_MCMC_STEPS = 10  # RMH refreshment steps per SMC iteration
-PRIOR_LOW = -10.0    # uniform prior bounds — matches initialization range of other algorithms
-PRIOR_HIGH = 10.0
-SIGMA_PROPOSAL = 1.0  # RMH proposal std dev — roughly one mode width
 MAX_STEPS = 500      # safety cap on SMC iterations
 
 
@@ -57,39 +54,58 @@ def main(seed=0, save_outputs=True):
         return log_density_fn(x) - logprior_fn(x)
 
     # --- Build adaptive tempered SMC with RMH inner kernel ---
-    # transition_generator is a callable and cannot be passed through
-    # mcmc_parameters (which gets vmapped over particles).  Bake sigma into a
-    # closure so the step function is self-contained and mcmc_parameters stays
-    # empty, sidestepping the vmap shape issue entirely.
+    # sigma is computed from the current tempering parameter (lambda) at each
+    # step using the 2.38/sqrt(d) * sigma_prior / sqrt(lambda) rule, matching
+    # the per-chain step size used in SEO/DEO.  We bake this into a jitted
+    # wrapper that reads state.tempering_param as a traced JAX value so the
+    # computation graph adapts dynamically without re-compilation.
+    _sigma_prior = (PRIOR_HIGH - PRIOR_LOW) / jnp.sqrt(12)
     _rmh_kernel = blackjax.rmh.build_kernel()
-    _normal_proposal = lambda rng_key, pos: (
-        pos + jax.random.normal(rng_key, shape=pos.shape) * SIGMA_PROPOSAL
-    )
 
-    def rmh_step_fn(rng_key, state, logdensity_fn):
-        return _rmh_kernel(rng_key, state, logdensity_fn,
-                           transition_generator=_normal_proposal)
+    @jax.jit
+    def step_fn(key, state):
+        lam = jnp.maximum(state.tempering_param, 1e-4)
+        sigma = (2.38 / jnp.sqrt(2)) * _sigma_prior / jnp.sqrt(lam)
 
-    smc = blackjax.adaptive_tempered_smc(
+        def _normal_proposal(rng_key, pos):
+            return pos + jax.random.normal(rng_key, shape=pos.shape) * sigma
+
+        def rmh_step_fn(rng_key, st, logdensity_fn):
+            return _rmh_kernel(rng_key, st, logdensity_fn,
+                               transition_generator=_normal_proposal)
+
+        return blackjax.adaptive_tempered_smc(
+            logprior_fn=logprior_fn,
+            loglikelihood_fn=loglikelihood_fn,
+            mcmc_step_fn=rmh_step_fn,
+            mcmc_init_fn=blackjax.rmh.init,
+            mcmc_parameters={},
+            resampling_fn=resampling.systematic,
+            target_ess=TARGET_ESS,
+            num_mcmc_steps=NUM_MCMC_STEPS,
+        ).step(key, state)
+
+    # --- Initialize particles from prior ---
+    # Build a one-off SMC object just for .init(); the proposal sigma doesn't
+    # matter here since it is only used during .step().
+    init_key, loop_key = jax.random.split(rng_key)
+    initial_positions = jax.random.uniform(init_key, shape=(NUM_PARTICLES, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
+    _smc_init = blackjax.adaptive_tempered_smc(
         logprior_fn=logprior_fn,
         loglikelihood_fn=loglikelihood_fn,
-        mcmc_step_fn=rmh_step_fn,
+        mcmc_step_fn=lambda rng_key, st, logdensity_fn: _rmh_kernel(
+            rng_key, st, logdensity_fn,
+            transition_generator=lambda k, p: p + jax.random.normal(k, p.shape),
+        ),
         mcmc_init_fn=blackjax.rmh.init,
         mcmc_parameters={},
         resampling_fn=resampling.systematic,
         target_ess=TARGET_ESS,
         num_mcmc_steps=NUM_MCMC_STEPS,
     )
-
-    # --- Initialize particles from prior ---
-    init_key, loop_key = jax.random.split(rng_key)
-    initial_positions = jax.random.uniform(init_key, shape=(NUM_PARTICLES, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
-    state = smc.init(initial_positions)
+    state = _smc_init.init(initial_positions)
 
     t0 = time.perf_counter()
-
-    # --- Run SMC loop (adaptive schedule; stop when lambda reaches 1) ---
-    step_fn = jax.jit(smc.step)
     all_lambdas = [float(state.tempering_param)]
     all_log_nc = []
     num_steps = 0
@@ -170,7 +186,7 @@ def main(seed=0, save_outputs=True):
         "num_mcmc_steps_per_iter": NUM_MCMC_STEPS,
         "prior_low": PRIOR_LOW,
         "prior_high": PRIOR_HIGH,
-        "sigma_proposal": SIGMA_PROPOSAL,
+        "sigma_proposal_formula": "2.38/sqrt(2) * sigma_prior / sqrt(lambda)",
         "wall_time_s": wall_time_s,
         "num_smc_steps": num_steps,
         "final_tempering_param": float(state.tempering_param),

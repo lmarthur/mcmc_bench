@@ -19,13 +19,13 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS
+from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAULT_WEIGHTS, PRIOR_LOW, PRIOR_HIGH
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 0
+NUM_BURNIN = 500
 NUM_SAMPLES = 2500
-NUM_WALKERS = 32
+NUM_WALKERS = 64
 NDIM = 2
 
 
@@ -41,7 +41,7 @@ def main(seed=0, save_outputs=True):
     t0 = time.perf_counter()
 
     # --- Initialize walkers from random starting positions ---
-    coords = jax.random.uniform(init_key, shape=(NUM_WALKERS, NDIM), minval=-10.0, maxval=10.0)
+    coords = jax.random.uniform(init_key, shape=(NUM_WALKERS, NDIM), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
 
     # --- Initialize sampler ---
     sampler = emcee_jax.EnsembleSampler(log_density_fn)
