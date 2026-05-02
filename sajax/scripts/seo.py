@@ -193,10 +193,32 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # --- Diagnostic: initial log-density per chain (cold chain is index -1) ---
     init_log_targets = np.array([float(log_density_fn(x0[i])) for i in range(NUM_CHAINS)])
-    _print("Initial log target density per chain (β increases left→right):")
-    for i, lp in enumerate(init_log_targets):
-        _print(f"    chain {i:2d}  beta={float(betas[i]):.4f}  log_target(x0)={lp:+.4e}")
-    _print(f"  Cold-chain initial log_target: {init_log_targets[-1]:+.4e}")
+    init_log_refs    = np.array([float(log_ref(x0[i]))         for i in range(NUM_CHAINS)])
+    _print("Initial log-density per chain (β increases left→right):")
+    _print(f"  {'chain':>5}  {'beta':>8}  {'log_target':>14}  {'log_ref':>14}  {'log_likelihood':>14}")
+    for i in range(NUM_CHAINS):
+        ll = init_log_targets[i] - init_log_refs[i]
+        _print(f"  {i:>5}  {float(betas[i]):>8.4f}  {init_log_targets[i]:>14.4e}"
+               f"  {init_log_refs[i]:>14.4e}  {ll:>14.4e}")
+
+    # --- Diagnostic: RWMH proposal check on cold chain (5 test proposals) ---
+    if KERNEL == "rwmh":
+        _print("\nRWMH proposal diagnostic (cold chain, 5 test proposals):")
+        diag_key, sample_key = jax.random.split(sample_key)
+        cold_x0 = x0[-1]
+        _print(f"  Cold chain x0 log_density : {float(log_density_fn(cold_x0)):+.4e}")
+        _print(f"  Cold chain x0 log_ref     : {float(log_ref(cold_x0)):+.4e}")
+        _print(f"  {'trial':>5}  {'log_target':>14}  {'log_ref':>14}  {'log_MH_ratio':>14}  values[:4]")
+        for trial in range(5):
+            diag_key, subkey = jax.random.split(diag_key)
+            noise = jax.random.normal(subkey, shape=cold_x0.shape)
+            proposal = cold_x0 + STEP_SIZE_COLD_RWMH * proposal_scale * noise
+            prop_lp  = float(log_density_fn(proposal))
+            prop_ref = float(log_ref(proposal))
+            log_mh   = prop_lp - float(log_density_fn(cold_x0))
+            vals_str = "  ".join(f"{float(v):.4f}" for v in np.array(proposal)[:4])
+            _print(f"  {trial:>5}  {prop_lp:>14.4e}  {prop_ref:>14.4e}"
+                   f"  {log_mh:>14.4e}  [{vals_str} ...]")
 
     # --- Run SEO sampling loop ---
     _print(f"Running SEO ({KERNEL.upper()} local kernel, {NUM_CHAINS} chains, "
@@ -228,6 +250,11 @@ def main(seed: int = 0, save_outputs: bool = True):
         _print(f"  {name:20s}  {first:12.6f}  {last:12.6f}  {abs(last - first):12.6f}")
     if np.allclose(cold_samples[0], cold_samples[-1]):
         _print("  WARNING: cold chain first and last samples are identical — chain never moved.")
+
+    # Fraction of unique samples in the cold chain (low → chain is stuck)
+    unique_rows = np.unique(cold_samples, axis=0)
+    frac_unique = len(unique_rows) / NUM_SAMPLES
+    _print(f"\n  Unique cold-chain samples: {len(unique_rows)}/{NUM_SAMPLES} ({frac_unique:.1%})")
 
     # --- Diagnostics ---
     # MALA: one gradient eval per chain per local step. RWMH: one log-density eval.
@@ -328,7 +355,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     az.plot_pair(
         idata,
         var_names=PARAM_NAMES,
-        kind="kde",
+        kind="scatter",
         marginals=True,
         figsize=(24, 24),
     )
