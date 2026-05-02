@@ -40,15 +40,15 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 4000
-NUM_SAMPLES = 8000
+NUM_BURNIN = 15000
+NUM_SAMPLES = 20000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
 # Diagnostic stride controls — print a table row every DIAG_STRIDE steps,
 # save an LC snapshot every PLOT_STRIDE steps.
-DIAG_STRIDE = 500
-PLOT_STRIDE = 50
+DIAG_STRIDE = 10
+PLOT_STRIDE = 10
 
 
 
@@ -136,7 +136,7 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
             gif_path,
             save_all=True,
             append_images=frames[1:],
-            duration=500,   # ms per frame
+            duration=250,   # ms per frame
             loop=0,         # loop forever
         )
         print(f"\nSaved LC evolution GIF ({len(frames)} frames) to {gif_path}")
