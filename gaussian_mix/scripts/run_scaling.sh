@@ -4,8 +4,8 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH -p mit_preemptable
 #SBATCH -G l40s:1
-#SBATCH -o gaussian_mix/output/scaling_study/slurm_%j.out
-#SBATCH -e gaussian_mix/output/scaling_study/slurm_%j.err
+#SBATCH -o gaussian_mix/output/scaling/slurm_%j.out
+#SBATCH -e gaussian_mix/output/scaling/slurm_%j.err
 
 module load miniforge
 module load nvhpc
