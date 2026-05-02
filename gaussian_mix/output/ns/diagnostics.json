@@ -1,6 +1,8 @@
 {
   "sampler": "NestedSampling_JAXNS",
-  "wall_time_s": 86.96138310901006,
+  "wall_time_s": 80.63172137801303,
+  "wall_time_core_s": 80.63172137801303,
+  "wall_time_total_s": 91.02860369501286,
   "num_posterior_draws": 5000,
   "prior_low": -10.0,
   "prior_high": 10.0,
