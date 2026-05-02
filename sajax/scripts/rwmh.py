@@ -76,22 +76,27 @@ _DIAG_PARAMS = [
 ]
 
 
-def run_step_diagnostics(unc_samples, constrain_fn, save_lcs=False, output_dir=None):
+def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_dir=None):
     """
-    Print per-step chain-mean parameters and reduced chi-squared.
+    Iterate through the full sample trace (including burn-in) and print a
+    per-step table of walker-mean parameters and reduced chi-squared.
+
+    Saves an animated GIF of LC snapshots to output_dir/lc_evolution.gif
+    every PLOT_STRIDE steps when save_lcs=True.
 
     Parameters
     ----------
-    unc_samples : dict
-        Each value has shape (NUM_CHAINS, NUM_STEPS) in unconstrained space.
-    constrain_fn : callable
-        Maps an unconstrained dict to a constrained dict (including derived params).
+    raw : ndarray, shape (NUM_STEPS, NUM_WALKERS, NDIM)
+        Raw unconstrained samples straight from trace.samples.coordinates.
     """
-    n_chains, n_steps = next(iter(unc_samples.values())).shape
+    from io import BytesIO
+    from PIL import Image
+
+    n_steps, n_walkers, _ = raw.shape
 
     print(f"\n=== Step-by-Step Diagnostics  "
-          f"(steps 0–{n_steps-1}, stride={DIAG_STRIDE}, {n_chains} chains) ===")
-    print("Values are the chain ensemble mean in constrained space.\n")
+          f"(steps 0–{n_steps-1}, stride={DIAG_STRIDE}, {n_walkers} walkers) ===")
+    print(f"Values are the walker ensemble mean in constrained space.\n")
 
     col_w = 13
     header = f"{'step':>5}  {'chi2_red':>9}  " + "  ".join(f"{p:>{col_w}}" for p in _DIAG_PARAMS)
@@ -99,21 +104,17 @@ def run_step_diagnostics(unc_samples, constrain_fn, save_lcs=False, output_dir=N
     print(header)
     print(sep)
 
-    if save_lcs and output_dir is not None:
-        lc_dir = output_dir / "step_lcs"
-        lc_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        lc_dir = None
+    frames = []
 
     for step_idx in range(0, n_steps, DIAG_STRIDE):
-        mean_unc = {name: jnp.array(unc_samples[name][:, step_idx].mean())
-                    for name in unc_samples}
-        c = constrain_fn(mean_unc)
+        mean_unc = jnp.array(raw[step_idx].mean(axis=0))
+        c = constrain_fn(unravel_fn(mean_unc))
+
         chi2 = compute_chi2(c)
         param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
         print(f"{step_idx:>5}  {chi2:>9.4f}  {param_str}")
 
-        if lc_dir is not None and step_idx % PLOT_STRIDE == 0:
+        if save_lcs and output_dir is not None and step_idx % PLOT_STRIDE == 0:
             lc_model = np.array(compute_lc_from_constrained(c))
             fig, (ax_lc, ax_res) = plt.subplots(
                 2, 1, figsize=(10, 5), sharex=True,
@@ -137,11 +138,25 @@ def run_step_diagnostics(unc_samples, constrain_fn, save_lcs=False, output_dir=N
             ax_res.spines["right"].set_visible(False)
 
             fig.tight_layout()
-            fig.savefig(lc_dir / f"lc_step_{step_idx:05d}.png", dpi=100, bbox_inches="tight")
-            plt.close(fig)
 
-    if lc_dir is not None:
-        print(f"\nLC snapshots saved to {lc_dir}/")
+            # Render figure to in-memory PIL Image
+            buf = BytesIO()
+            fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            frames.append(Image.open(buf).convert("RGBA"))
+
+    if frames and output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        gif_path = output_dir / "lc_evolution.gif"
+        frames[0].save(
+            gif_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=500,   # ms per frame
+            loop=0,         # loop forever
+        )
+        print(f"\nSaved LC evolution GIF ({len(frames)} frames) to {gif_path}")
 
 
 def inference_loop(rng_key, kernel, initial_state, num_samples):
