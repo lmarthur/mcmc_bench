@@ -50,13 +50,14 @@ NDIM = len(PARAM_NAMES)
 # reach shape [N_particles, n_times, n_pixels] which exhausts GPU VRAM at
 # N_particles=2000 (~47 GB per intermediate tensor on this model).
 # Keep N_particles <= 500 for the L40S (48 GB); 200 is a safe default.
-NUM_PARTICLES = 200
-TARGET_ESS = 0.5      # target ESS fraction for adaptive temperature step
-NUM_MCMC_STEPS = 10   # RMH refreshment steps per SMC iteration
+NUM_PARTICLES = 250
+TARGET_ESS = 0.75    # target ESS fraction for adaptive temperature step
+NUM_MCMC_STEPS = 25   # RMH refreshment steps per SMC iteration
 MAX_STEPS = 500       # safety cap on SMC iterations
 
-# Per-dimension proposal scale multiplier applied to the RGG base scale
-# (2.38/sqrt(d)) * prior_std_i.  Tune cold for ~23% RMH acceptance.
+# Multiplier on (2.38/sqrt(d)) * current_particle_std — the RGG-optimal scale
+# for the current tempered posterior.  1.0 = theoretically optimal; tune down
+# if acceptance is low (proposal overshoots the posterior).
 SIGMA_FACTOR = 1.0
 
 DIAG_STRIDE = 2       # print step diagnostics every N SMC iterations
@@ -107,42 +108,55 @@ def main(seed: int = 0, save_outputs: bool = True):
     def loglikelihood_fn(x):
         return log_density_fn(x) - logprior_fn(x)
 
-    # --- Per-dimension RMH proposal scale (Roberts-Gelman-Gilks 1997) ---
+    # --- Adaptive RMH kernel: proposal_scale is a traced JAX argument so the
+    #     JIT compiles once and reuses for every per-step scale value. ---
+    _rmh_kernel = blackjax.rmh.build_kernel()
+
+    @jax.jit
+    def step_fn(rng_key, state, proposal_scale):
+        """Single adaptive-tempered SMC step with dynamic diagonal proposal."""
+        def _proposal(k, pos):
+            return pos + jax.random.normal(k, shape=pos.shape) * proposal_scale
+
+        def _rmh_step(k, s, logdensity_fn):
+            return _rmh_kernel(k, s, logdensity_fn, transition_generator=_proposal)
+
+        kernel = blackjax.adaptive_tempered_smc(
+            logprior_fn=logprior_fn,
+            loglikelihood_fn=loglikelihood_fn,
+            mcmc_step_fn=_rmh_step,
+            mcmc_init_fn=blackjax.rmh.init,
+            mcmc_parameters={},
+            resampling_fn=resampling.systematic,
+            target_ess=TARGET_ESS,
+            num_mcmc_steps=NUM_MCMC_STEPS,
+        )
+        return kernel.step(rng_key, state)
+
     prior_stds = jnp.array([
         float(jnp.sqrt(PRIOR_DISTRIBUTIONS[name].variance))
         for name in PARAM_NAMES
     ])
-    proposal_scale = SIGMA_FACTOR * (2.38 / jnp.sqrt(NDIM)) * prior_stds
 
-    _rmh_kernel = blackjax.rmh.build_kernel()
-    _normal_proposal = lambda rng_key, pos: (
-        pos + jax.random.normal(rng_key, shape=pos.shape) * proposal_scale
-    )
-
-    def rmh_step_fn(rng_key, state, logdensity_fn):
-        return _rmh_kernel(rng_key, state, logdensity_fn,
-                           transition_generator=_normal_proposal)
-
-    smc = blackjax.adaptive_tempered_smc(
+    # --- Initialize particles from prior ---
+    init_key, loop_key = jax.random.split(rng_key)
+    initial_positions = sample_prior_particles(init_key, NUM_PARTICLES)
+    # Use a throwaway kernel just to get the initial SMC state object.
+    _init_kernel = blackjax.adaptive_tempered_smc(
         logprior_fn=logprior_fn,
         loglikelihood_fn=loglikelihood_fn,
-        mcmc_step_fn=rmh_step_fn,
+        mcmc_step_fn=lambda k, s, ld: s,  # placeholder — never called
         mcmc_init_fn=blackjax.rmh.init,
         mcmc_parameters={},
         resampling_fn=resampling.systematic,
         target_ess=TARGET_ESS,
         num_mcmc_steps=NUM_MCMC_STEPS,
     )
-
-    # --- Initialize particles from prior ---
-    init_key, loop_key = jax.random.split(rng_key)
-    initial_positions = sample_prior_particles(init_key, NUM_PARTICLES)
-    state = smc.init(initial_positions)
+    state = _init_kernel.init(initial_positions)
 
     t0 = time.perf_counter()
 
     # --- SMC loop ---
-    step_fn = jax.jit(smc.step)
     all_lambdas = [float(state.tempering_param)]
     all_log_nc = []
     all_ess = []
@@ -175,8 +189,21 @@ def main(seed: int = 0, save_outputs: bool = True):
         prev_particles = np.array(state.particles)
         prev_lam = float(state.tempering_param)
 
+        # Adaptive proposal: RGG scale applied to current particle spread,
+        # floored at 1% of per-parameter prior std to prevent collapse when
+        # particles concentrate, capped at prior std so it only shrinks as λ→1.
+        p_arr = jnp.array(state.particles)
+        w_arr = jnp.array(state.weights)
+        w_mean = (p_arr * w_arr[:, None]).sum(axis=0)
+        w_var  = (w_arr[:, None] * (p_arr - w_mean) ** 2).sum(axis=0)
+        current_std = jnp.sqrt(jnp.maximum(w_var, 1e-8))
+        proposal_scale = SIGMA_FACTOR * (2.38 / jnp.sqrt(NDIM)) * jnp.minimum(
+            jnp.maximum(current_std, 0.01 * prior_stds),
+            prior_stds,
+        )
+
         loop_key, subkey = jax.random.split(loop_key)
-        state, info = step_fn(subkey, state)
+        state, info = step_fn(subkey, state, proposal_scale)
         lam = float(state.tempering_param)
         lnc = float(info.log_likelihood_increment)
         dlam = lam - prev_lam
