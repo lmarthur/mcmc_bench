@@ -27,6 +27,7 @@ import pt_jax
 from model import (
     make_log_density,
     plot_model,
+    plot_bestfit_lightcurve,
     _call_sajax,
     compute_chi2,
     compute_lc_from_constrained,
@@ -141,6 +142,15 @@ def mala_kernel_generator(log_p, step_size):
 
     return kernel
 
+def _to_physical_dict(param_vector):
+    """Convert a flat parameter vector (indexed by PARAM_NAMES) to a dict
+    including derived physical quantities needed by _call_sajax / compute_lc_from_constrained."""
+    c = {name: float(param_vector[i]) for i, name in enumerate(PARAM_NAMES)}
+    c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
+    c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
+    c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
+    c["ldc_u2"] = float(np.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"]))
+    return c
 
 def run_step_diagnostics(cold_samples, save_lcs=False, output_dir=None):
     """Print per-step cold-chain parameters and reduced chi-squared.
@@ -365,6 +375,19 @@ def main(seed: int = 0, save_outputs: bool = True):
     if save_outputs:
         run_step_diagnostics(cold_samples, save_lcs=True, output_dir=DEO_OUTPUT_DIR)
 
+    # --- Build constrained dicts for all cold-chain samples ---
+    # This is the "constrained_samples" dict: {name: array of shape (NUM_SAMPLES,)}
+    constrained_samples = {name: cold_samples[:, i] for i, name in enumerate(PARAM_NAMES)}
+    # Add derived quantities so plot_bestfit_lightcurve / compute_lc_from_constrained can use them
+    ecc_h = cold_samples[:, PARAM_NAMES.index("ecc_h")]
+    ecc_k = cold_samples[:, PARAM_NAMES.index("ecc_k")]
+    constrained_samples["eccentricity"]  = ecc_h ** 2 + ecc_k ** 2
+    constrained_samples["arg_periapsis"] = np.arctan2(ecc_k, ecc_h)
+    q1 = cold_samples[:, PARAM_NAMES.index("ldc_q1")]
+    q2 = cold_samples[:, PARAM_NAMES.index("ldc_q2")]
+    constrained_samples["ldc_u1"] = 2 * np.sqrt(q1) * q2
+    constrained_samples["ldc_u2"] = np.sqrt(q1) * (1 - 2 * q2)
+
     # --- Diagnostics ---
     # MALA: one gradient eval per chain per local step. RWMH: one log-density eval.
     # Swap moves cost only log-density evals in either case.
@@ -374,7 +397,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     posterior_dict = {PARAM_NAMES[i]: cold_samples[None, :, i] for i in range(ndim)}
     _az_log = logging.getLogger("arviz")
     _az_prev = _az_log.level
-    _az_log.setLevel(logging.ERROR)  # suppress shape-validation warning (single cold chain)
+    _az_log.setLevel(logging.ERROR)
     idata = az.from_dict(
         posterior=posterior_dict,
         sample_stats={"swap_rejection_rate": np.mean(mean_swap_rejection)},
@@ -450,7 +473,7 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # --- Plots ---
 
-    # Trace plots for first 6 parameters
+    # 1. Trace plots for first 6 parameters
     axes = az.plot_trace(idata, var_names=PARAM_NAMES[:6], figsize=(14, 10))
     plt.tight_layout()
     trace_path = DEO_OUTPUT_DIR / "traces_subset.png"
@@ -458,100 +481,76 @@ def main(seed: int = 0, save_outputs: bool = True):
     plt.close()
     _print(f"Saved trace plot to {trace_path}")
 
-    # Corner plot — all parameters
-    az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
-    az.plot_pair(
+    # 2. Corner plot — all parameters with truth / MAP / mean reference lines
+    n_params = len(PARAM_NAMES)
+    az.rcParams["plot.max_subplots"] = n_params ** 2
+
+    axes = az.plot_pair(
         idata,
         var_names=PARAM_NAMES,
         kind="kde",
         marginals=True,
         figsize=(24, 24),
     )
+
+    # Reference values for each parameter
+    truth_vals = [float(GROUND_TRUTH[p]) for p in PARAM_NAMES]
+    mean_vals  = [float(posterior_means[i]) for i in range(n_params)]
+
+    # Consistent colors
+    color_truth = "steelblue"
+    color_mean  = "crimson"
+    lw = 1.5
+    marker_size = 30
+
+    for i in range(n_params):
+        for j in range(n_params):
+            ax = axes[i, j]
+            if ax is None:
+                continue
+
+            if i == j:
+                ax.axvline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.8)
+                ax.axvline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.8)
+
+            elif i > j:
+                ax.axvline(truth_vals[j], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                ax.axvline(mean_vals[j],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                ax.axhline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                ax.axhline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                ax.scatter(truth_vals[j], truth_vals[i], color=color_truth,
+                           marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+                ax.scatter(mean_vals[j],  mean_vals[i],  color=color_mean,
+                           marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+
+    from matplotlib.lines import Line2D
+    fig = axes[0, 0].get_figure()
+    legend_handles = [
+        Line2D([0], [0], color=color_truth, ls="-",  lw=lw, label="Truth"),
+        Line2D([0], [0], color=color_mean,  ls=":",  lw=lw, label="Posterior mean"),
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="upper right",
+        bbox_to_anchor=(0.95, 0.95),
+        frameon=True,
+        framealpha=0.9,
+        fontsize=12,
+        title="Reference",
+        title_fontsize=13,
+    )
+
     corner_path = DEO_OUTPUT_DIR / "corner_all.png"
-    plt.savefig(corner_path, dpi=120, bbox_inches="tight")
-    plt.close()
+    fig.savefig(corner_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
     _print(f"Saved full corner plot to {corner_path}")
 
-    # Best-fit light curve using posterior mean
-    mean_dict = {name: float(posterior_means[i]) for i, name in enumerate(PARAM_NAMES)}
+    # 3. Best-fit light curve — delegate to model.py
+    plot_bestfit_lightcurve(constrained_samples, DEO_OUTPUT_DIR, map_params=None)
 
-    # Derive parameterized quantities (ecc_h/ecc_k → eccentricity/arg_periapsis,
-    # ldc_q1/ldc_q2 → LDC_u1/LDC_u2 via Kipping 2013).
-    _ecc    = float(mean_dict["ecc_h"] ** 2 + mean_dict["ecc_k"] ** 2)
-    _omega  = float(np.arctan2(mean_dict["ecc_k"], mean_dict["ecc_h"]))
-    _ldc_u1 = float(2 * np.sqrt(mean_dict["ldc_q1"]) * mean_dict["ldc_q2"])
-    _ldc_u2 = float(np.sqrt(mean_dict["ldc_q1"]) * (1 - 2 * mean_dict["ldc_q2"]))
-
-    lc_bestfit = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([mean_dict["spot_lat"], mean_dict["fac_lat"]]),
-            np.array([mean_dict["spot_long"], mean_dict["fac_long"]]),
-            np.array([mean_dict["spot_size"], mean_dict["fac_size"]]),
-            np.stack([np.array([mean_dict["spot_flux"]]), np.array([mean_dict["fac_flux"]])]),
-            mean_dict["p_rot"],
-            mean_dict["planet_radius"],
-            mean_dict["semimajor_axis"],
-            np.deg2rad(mean_dict["inclination"]),
-            _ecc,
-            _omega,
-            mean_dict["P_orb"],
-            _ldc_u1,
-            _ldc_u2,
-        )["lc"]
-    )
-
-    _gt_ecc    = float(GROUND_TRUTH["ecc_h"] ** 2 + GROUND_TRUTH["ecc_k"] ** 2)
-    _gt_omega  = float(np.arctan2(GROUND_TRUTH["ecc_k"], GROUND_TRUTH["ecc_h"]))
-    _gt_ldc_u1 = float(2 * np.sqrt(GROUND_TRUTH["ldc_q1"]) * GROUND_TRUTH["ldc_q2"])
-    _gt_ldc_u2 = float(np.sqrt(GROUND_TRUTH["ldc_q1"]) * (1 - 2 * GROUND_TRUTH["ldc_q2"]))
-
-    lc_true = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
-            np.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
-            np.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
-            np.stack([np.array([GROUND_TRUTH["spot_flux"]]), np.array([GROUND_TRUTH["fac_flux"]])]),
-            GROUND_TRUTH["p_rot"],
-            GROUND_TRUTH["planet_radius"],
-            GROUND_TRUTH["semimajor_axis"],
-            np.deg2rad(GROUND_TRUTH["inclination"]),
-            _gt_ecc,
-            _gt_omega,
-            GROUND_TRUTH["P_orb"],
-            _gt_ldc_u1,
-            _gt_ldc_u2,
-        )["lc"]
-    )
-
-    fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
-                                         gridspec_kw={"height_ratios": [3, 1]})
-    ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
-                  label="Observations", zorder=1)
-    ax_lc.plot(TIMES, lc_true, lw=2, color="steelblue", label="True", zorder=2)
-    ax_lc.plot(TIMES, lc_bestfit, lw=2, color="crimson", linestyle="--",
-               label="Posterior mean fit", zorder=3)
-    ax_lc.set_ylabel("Normalised flux")
-    ax_lc.legend(frameon=False)
-    ax_lc.spines["top"].set_visible(False)
-    ax_lc.spines["right"].set_visible(False)
-
-    residuals_ppm = (OBS_LIGHT_CURVE - lc_bestfit) * 1e6
-    ax_res.scatter(TIMES, residuals_ppm, s=4, color="orange", alpha=0.6)
-    ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
-    ax_res.set_xlabel("Time [days]")
-    ax_res.set_ylabel("Residuals [ppm]")
-    ax_res.spines["top"].set_visible(False)
-    ax_res.spines["right"].set_visible(False)
-
-    fig.tight_layout()
-    lc_path = DEO_OUTPUT_DIR / "bestfit_lightcurve.png"
-    fig.savefig(lc_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    _print(f"Saved best-fit light curve to {lc_path}")
-
-    # Per-pair swap rejection rates
+    # 4. Per-pair swap rejection rates
     pair_labels = [f"{betas[i]:.3f}↔{betas[i+1]:.3f}" for i in range(NUM_CHAINS - 1)]
     fig, ax = plt.subplots(figsize=(8, 3))
     ax.bar(range(NUM_CHAINS - 1), mean_swap_rejection, color="steelblue", alpha=0.8)

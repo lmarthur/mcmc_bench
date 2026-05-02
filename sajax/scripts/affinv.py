@@ -40,15 +40,15 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 500
-NUM_SAMPLES = 1000
+NUM_BURNIN = 1000
+NUM_SAMPLES = 2000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
 # Diagnostic stride controls — print a table row every DIAG_STRIDE steps,
 # save an LC snapshot every PLOT_STRIDE steps.
-DIAG_STRIDE = 10
-PLOT_STRIDE = 100
+DIAG_STRIDE = 100
+PLOT_STRIDE = 1000
 
 
 
@@ -165,6 +165,20 @@ def main(seed=0, save_outputs=True):
 
     # Reshape: (NUM_STEPS, NUM_WALKERS, NDIM) -> (NUM_WALKERS, NUM_SAMPLES, NDIM)
     raw = np.asarray(trace.samples.coordinates)
+    
+    # --- Extract MAP sample ---
+    logprob = np.asarray(trace.samples.log_probability.T)  # (nwalkers, nsteps)
+
+    # Find the (walker, step) index of the highest log-prob
+    map_idx = np.unravel_index(np.argmax(logprob), logprob.shape)
+    i_walker, i_step = map_idx
+    _print(f"\n  MAP sample at walker={i_walker}, step={i_step}, "
+           f"log_prob={logprob[i_walker, i_step]:.4f}")
+
+    # raw is (nsteps, nwalkers, ndim) — note the axis order
+    map_raw = jnp.array(raw[i_step, i_walker, :])
+    map_constrained = constrain_fn(unravel_fn(map_raw))
+    map_params = {name: float(map_constrained[name]) for name in map_constrained.keys()}
 
     # --- Step-by-step diagnostics (full trace, including burn-in) ---
     run_step_diagnostics(raw, constrain_fn, unravel_fn,
@@ -250,20 +264,87 @@ def main(seed=0, save_outputs=True):
         plt.savefig(AFFINV_OUTPUT_DIR / "traces_subset.png")
         plt.close()
 
-        # 2. Corner plot — all parameters
-        az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
-        az.plot_pair(
+        # 2. Corner plot — all parameters with truth / MAP / mean reference lines
+        n_params = len(PARAM_NAMES)
+        az.rcParams["plot.max_subplots"] = n_params ** 2
+
+        axes = az.plot_pair(
             idata,
             var_names=PARAM_NAMES,
             kind="kde",
             marginals=True,
             figsize=(24, 24),
         )
-        plt.savefig(AFFINV_OUTPUT_DIR / "corner_all.png", dpi=120, bbox_inches="tight")
-        plt.close()
+
+        # Reference values for each parameter
+        truth_vals = [float(GROUND_TRUTH[p]) for p in PARAM_NAMES]
+        map_vals   = [float(map_params[p]) for p in PARAM_NAMES]
+        mean_vals  = [float(np.array(constrained[p]).mean()) for p in PARAM_NAMES]
+
+        # Consistent colors
+        color_truth = "steelblue"
+        color_map   = "darkgreen"
+        color_mean  = "crimson"
+        lw = 1.5
+        marker_size = 30
+
+        for i in range(n_params):
+            for j in range(n_params):
+                ax = axes[i, j]
+                if ax is None:
+                    continue
+
+                # --- Diagonal: 1D marginals (row i = param i) ---
+                if i == j:
+                    ax.axvline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.8)
+                    ax.axvline(map_vals[i],   color=color_map,   ls="--", lw=lw, alpha=0.8)
+                    ax.axvline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.8)
+
+                # --- Lower triangle: 2D panels (x-axis = param j, y-axis = param i) ---
+                elif i > j:
+                    # Vertical lines for param j (x-axis)
+                    ax.axvline(truth_vals[j], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                    ax.axvline(map_vals[j],   color=color_map,   ls="--", lw=lw, alpha=0.5)
+                    ax.axvline(mean_vals[j],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                    # Horizontal lines for param i (y-axis)
+                    ax.axhline(truth_vals[i], color=color_truth, ls="-",  lw=lw, alpha=0.5)
+                    ax.axhline(map_vals[i],   color=color_map,   ls="--", lw=lw, alpha=0.5)
+                    ax.axhline(mean_vals[i],  color=color_mean,  ls=":",  lw=lw, alpha=0.5)
+
+                    # Markers at intersections
+                    ax.scatter(truth_vals[j], truth_vals[i], color=color_truth,
+                               marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+                    ax.scatter(map_vals[j],   map_vals[i],   color=color_map,
+                               marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+                    ax.scatter(mean_vals[j],  mean_vals[i],  color=color_mean,
+                               marker="s", s=marker_size, zorder=10, edgecolors="white", linewidths=0.5)
+
+        # --- Legend in the top-right corner ---
+        from matplotlib.lines import Line2D
+        fig = axes[0, 0].get_figure()
+
+        legend_handles = [
+            Line2D([0], [0], color=color_truth, ls="-",  lw=lw, label="Truth"),
+            Line2D([0], [0], color=color_map,   ls="--", lw=lw, label="MAP"),
+            Line2D([0], [0], color=color_mean,  ls=":",  lw=lw, label="Posterior mean"),
+        ]
+        fig.legend(
+            handles=legend_handles,
+            loc="upper right",
+            bbox_to_anchor=(0.95, 0.95),
+            frameon=True,
+            framealpha=0.9,
+            fontsize=12,
+            title="Reference",
+            title_fontsize=13,
+        )
+
+        fig.savefig(AFFINV_OUTPUT_DIR / "corner_all.png", dpi=120, bbox_inches="tight")
+        plt.close(fig)
 
         # 3. Best-fit light curve using posterior mean
-        plot_bestfit_lightcurve(constrained, AFFINV_OUTPUT_DIR)
+        plot_bestfit_lightcurve(constrained, AFFINV_OUTPUT_DIR, map_params=map_params)
 
     return diagnostics
 

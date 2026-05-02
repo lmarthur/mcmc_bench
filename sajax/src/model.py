@@ -128,22 +128,39 @@ ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 #Narrow
 PRIOR_DISTRIBUTIONS = {
     "spot_lat":      dist.Uniform(4.0, 6.0),
+    # "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
     "spot_long":     dist.Uniform(4.0, 6.0),
+    # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
     "spot_size":     dist.Uniform(10.0, 12.0),
+    # "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
     "spot_flux":     dist.Uniform(0.65, 0.75),
+    # "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
     "fac_lat":       dist.Uniform(-25.0, -15.0),
+    # "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
     "fac_long":      dist.Uniform(160.0, 170.0),
+    # "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
     "fac_size":      dist.Uniform(15.0, 17.0),
+    # "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
     "fac_flux":      dist.Uniform(1.05, 1.15),
+    # "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
     "p_rot":         dist.Normal(TRUE_P_ROT, 0.001),
+    # "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
     "planet_radius": dist.Uniform(0.095, 0.15),
+    # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
     "semimajor_axis":dist.Uniform(4.0, 4.5),
+    # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
     "inclination":   dist.Uniform(89.0, 91.0),
+    # "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
     "ecc_h":         dist.Uniform(-0.01, 0.01),
+    # "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
     "ecc_k":         dist.Uniform(-0.01, 0.01),
+    # "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    "ldc_q1":        dist.Uniform(0.34, 0.38),
-    "ldc_q2":        dist.Uniform(0.31, 0.35),
+    # "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
+    # "ldc_q1":        dist.Uniform(0.34, 0.38),
+    "ldc_q1":        dist.Uniform(0.0, 1.0),
+    # "ldc_q2":        dist.Uniform(0.31, 0.35),
+    "ldc_q2":        dist.Uniform(0.0, 1.0),
 }
 
 #Wide
@@ -835,10 +852,9 @@ def plot_model(filename: str = "spot_transit_light_curve.png"):
     print(f"Saved diagnostic plot with snapshots to {out_path}")
 
 
-def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path):
-    """Plot posterior mean and posterior maximum light curve vs truth and observations, save to output_dir."""
+def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path, map_params: dict = None):
+    """Plot posterior mean and MAP light curve vs truth and observations."""
     mean_c = {name: float(np.array(v).mean()) for name, v in constrained_samples.items()}
-    max_c = {name: float(np.array(v).max()) for name, v in constrained_samples.items()}
 
     lc_mean = np.array(
         _call_sajax(
@@ -858,26 +874,7 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path):
             mean_c["ldc_u2"],
         )["lc"]
     )
-
-    lc_max = np.array(
-        _call_sajax(
-            TIMES,
-            np.array([max_c["spot_lat"], max_c["fac_lat"]]),
-            np.array([max_c["spot_long"], max_c["fac_long"]]),
-            np.array([max_c["spot_size"], max_c["fac_size"]]),
-            np.stack([np.array([max_c["spot_flux"]]), np.array([max_c["fac_flux"]])]),
-            max_c["p_rot"],
-            max_c["planet_radius"],
-            max_c["semimajor_axis"],
-            np.deg2rad(max_c["inclination"]),
-            max_c["eccentricity"],
-            max_c["arg_periapsis"],
-            max_c["P_orb"],
-            max_c["ldc_u1"],
-            max_c["ldc_u2"],
-        )["lc"]
-    )
-
+    
     fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
                                          gridspec_kw={"height_ratios": [3, 1]})
     ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
@@ -885,20 +882,46 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path):
     ax_lc.plot(TIMES, LC_TRUE, lw=2, color="steelblue", label="True", zorder=2)
     ax_lc.plot(TIMES, lc_mean, lw=2, color="crimson", linestyle="--",
                label="Posterior mean fit", zorder=3)
-    ax_lc.plot(TIMES, lc_max, lw=2, color="darkgreen", linestyle="--",
-               label="Posterior maximum fit", zorder=4)
+
+    # Residual plot starts with mean residuals
+    mean_residuals_ppm = (OBS_LIGHT_CURVE - lc_mean) * 1e6
+    ax_res.scatter(TIMES, mean_residuals_ppm, s=4, color="crimson", alpha=0.6, label="Mean")
+
+    # --- MAP light curve (only if map_params provided) ---
+    if map_params is not None:
+        mc = map_params
+        lc_map = np.array(
+            _call_sajax(
+                TIMES,
+                np.array([mc["spot_lat"], mc["fac_lat"]]),
+                np.array([mc["spot_long"], mc["fac_long"]]),
+                np.array([mc["spot_size"], mc["fac_size"]]),
+                np.stack([np.array([mc["spot_flux"]]), np.array([mc["fac_flux"]])]),
+                mc["p_rot"],
+                mc["planet_radius"],
+                mc["semimajor_axis"],
+                np.deg2rad(mc["inclination"]),
+                mc["eccentricity"],
+                mc["arg_periapsis"],
+                mc["P_orb"],
+                mc["ldc_u1"],
+                mc["ldc_u2"],
+            )["lc"]
+        )
+        ax_lc.plot(TIMES, lc_map, lw=2, color="darkgreen", linestyle="--",
+                   label="MAP fit", zorder=4)
+        map_residuals_ppm = (OBS_LIGHT_CURVE - lc_map) * 1e6
+        ax_res.scatter(TIMES, map_residuals_ppm, s=4, color="darkgreen", alpha=0.6, label="MAP")
+
     ax_lc.set_ylabel("Normalised flux")
     ax_lc.legend(frameon=False)
     ax_lc.spines["top"].set_visible(False)
     ax_lc.spines["right"].set_visible(False)
 
-    mean_residuals_ppm = (OBS_LIGHT_CURVE - lc_mean) * 1e6
-    max_residuals_ppm = (OBS_LIGHT_CURVE - lc_max) * 1e6
-    ax_res.scatter(TIMES, mean_residuals_ppm, s=4, color="orange", alpha=0.6)
-    ax_res.scatter(TIMES, max_residuals_ppm, s=4, color="darkgreen", alpha=0.6)
-    ax_res.axhline(0, color="crimson", lw=1, linestyle="--")
+    ax_res.axhline(0, color="grey", lw=1, linestyle="--")
     ax_res.set_xlabel("Time [days]")
     ax_res.set_ylabel("Residuals [ppm]")
+    ax_res.legend(frameon=False, fontsize=8)
     ax_res.spines["top"].set_visible(False)
     ax_res.spines["right"].set_visible(False)
 
