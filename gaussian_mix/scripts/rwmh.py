@@ -48,7 +48,8 @@ def main(seed=0, save_outputs=True):
     if save_outputs:
         plot_model()
 
-    t0 = time.perf_counter()
+    # total timer: covers initialization, JIT compilation, sampling, and host transfer
+    t_total = time.perf_counter()
 
     # --- Initialize chains from random starting positions ---
     initial_positions = jax.random.uniform(init_key, shape=(NUM_CHAINS, 2), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
@@ -57,31 +58,42 @@ def main(seed=0, save_outputs=True):
     init_fn = jax.vmap(kernel.init)
     initial_states = init_fn(initial_positions)
 
+    burnin_keys = jax.random.split(burnin_key, NUM_CHAINS)
+    chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
+
     @jax.vmap
     def run_chain(rng_key, initial_state):
         return inference_loop(rng_key, kernel.step, initial_state, NUM_BURNIN)
 
+    @jax.vmap
+    def run_sample_chain(rng_key, initial_state):
+        return inference_loop(rng_key, kernel.step, initial_state, NUM_SAMPLES)
+
+    # AOT compile to exclude JIT from core timer; use initial_states as shape proxy for post-burnin states
+    if NUM_BURNIN > 0:
+        _c_burnin = jax.jit(run_chain).lower(burnin_keys, initial_states).compile()
+    _c_sample = jax.jit(run_sample_chain).lower(chain_sample_keys, initial_states).compile()
+
+    # core timer: burn-in + sampling only, no JIT overhead
+    t_core = time.perf_counter()
+
     # --- Burn-in (discard, just to move chains away from starting positions) ---
     if NUM_BURNIN > 0:
         _print(f"Running burn-in ({NUM_BURNIN} steps)...")
-        burnin_keys = jax.random.split(burnin_key, NUM_CHAINS)
-        burnin_states, _ = run_chain(burnin_keys, initial_states)
+        burnin_states, _ = _c_burnin(burnin_keys, initial_states)
         post_burnin_states = jax.tree.map(lambda x: x[:, -1], burnin_states)
     else:
         post_burnin_states = initial_states
 
     # --- Sample ---
     _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_CHAINS} chains)...")
-
-    @jax.vmap
-    def run_sample_chain(rng_key, initial_state):
-        return inference_loop(rng_key, kernel.step, initial_state, NUM_SAMPLES)
-
-    chain_sample_keys = jax.random.split(sample_key, NUM_CHAINS)
-    all_states, all_infos = run_sample_chain(chain_sample_keys, post_burnin_states)
+    all_states, all_infos = _c_sample(chain_sample_keys, post_burnin_states)
+    jax.block_until_ready(all_states)
+    wall_time_core_s = time.perf_counter() - t_core
 
     # all_states.position: (NUM_CHAINS, NUM_SAMPLES, 2)
     samples = np.array(all_states.position)
+    wall_time_total_s = time.perf_counter() - t_total
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
@@ -141,9 +153,8 @@ def main(seed=0, save_outputs=True):
     _print(summary.to_string())
     _print()
     _print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
-
-    wall_time_s = time.perf_counter() - t0
-    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time (core):  {wall_time_core_s:.2f}s")
+    _print(f"  Wall-clock time (total): {wall_time_total_s:.2f}s")
 
     # --- Results ---
     diagnostics = {
@@ -154,7 +165,9 @@ def main(seed=0, save_outputs=True):
         "adapted_step_size": float(STEP_SIZE),
         "mean_acceptance_rate": float(acceptance),
         "total_log_density_evals": int(total_log_density_evals),
-        "wall_time_s": wall_time_s,
+        "wall_time_s": wall_time_core_s,
+        "wall_time_core_s": wall_time_core_s,
+        "wall_time_total_s": wall_time_total_s,
         "bulk_ess_per_logp_eval": float(ess_per_logp_eval),
         "mode_weights": mode_weights.tolist(),
         "true_mode_weights": np.array(DEFAULT_WEIGHTS).tolist(),

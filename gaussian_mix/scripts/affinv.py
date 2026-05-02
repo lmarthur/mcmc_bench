@@ -38,7 +38,8 @@ def main(seed=0, save_outputs=True):
     if save_outputs:
         plot_model()
 
-    t0 = time.perf_counter()
+    # total timer: covers initialization, JIT compilation, sampling, and host transfer
+    t_total = time.perf_counter()
 
     # --- Initialize walkers from random starting positions ---
     coords = jax.random.uniform(init_key, shape=(NUM_WALKERS, NDIM), minval=PRIOR_LOW, maxval=PRIOR_HIGH)
@@ -47,17 +48,26 @@ def main(seed=0, save_outputs=True):
     sampler = emcee_jax.EnsembleSampler(log_density_fn)
     state = sampler.init(state_key, coords)
 
-    # --- Run chains in parallel ---
+    # AOT compile to exclude JIT from core timer; progress=False required inside jit
+    _c_sample = jax.jit(
+        lambda k, s: sampler.sample_parallel(k, s, NUM_SAMPLES, progress=False)
+    ).lower(sample_key, state).compile()
+
+    # core timer: sampling only, no JIT overhead
+    t_core = time.perf_counter()
+
     _print(f"Sampling ({NUM_SAMPLES} steps, {NUM_WALKERS} walkers)...")
     with warnings.catch_warnings():
-        if not save_outputs:
-            warnings.simplefilter("ignore")
-        trace = sampler.sample_parallel(sample_key, state, NUM_SAMPLES, progress=save_outputs)
+        warnings.simplefilter("ignore")
+        trace = _c_sample(sample_key, state)
+    jax.block_until_ready(trace.samples.coordinates)
+    wall_time_core_s = time.perf_counter() - t_core
 
     # samples shape: (NUM_STEPS, NUM_WALKERS, NDIM) -> reshape to (NUM_WALKERS, NUM_SAMPLES, NDIM)
     raw = np.asarray(trace.samples.coordinates)  # (NUM_SAMPLES, NUM_WALKERS, NDIM)
     samples = raw.transpose(1, 0, 2)             # (NUM_WALKERS, NUM_SAMPLES, NDIM)
     samples = samples[:, NUM_BURNIN:, :]         # discard burn-in
+    wall_time_total_s = time.perf_counter() - t_total
 
     # --- Diagnostics ---
     means_np = np.array(DEFAULT_MEANS)
@@ -118,9 +128,8 @@ def main(seed=0, save_outputs=True):
     _print(summary.to_string())
     _print()
     _print(f"  Bulk ESS per log-density eval: {ess_per_logp_eval:.4f}")
-
-    wall_time_s = time.perf_counter() - t0
-    _print(f"\n  Wall-clock time: {wall_time_s:.2f}s")
+    _print(f"\n  Wall-clock time (core):  {wall_time_core_s:.2f}s")
+    _print(f"  Wall-clock time (total): {wall_time_total_s:.2f}s")
 
     # --- Results ---
     diagnostics = {
@@ -128,7 +137,9 @@ def main(seed=0, save_outputs=True):
         "num_walkers": NUM_WALKERS,
         "num_burnin": NUM_BURNIN,
         "num_samples": NUM_SAMPLES,
-        "wall_time_s": wall_time_s,
+        "wall_time_s": wall_time_core_s,
+        "wall_time_core_s": wall_time_core_s,
+        "wall_time_total_s": wall_time_total_s,
         "mean_acceptance_rate": float(acceptance),
         "total_log_density_evals": int(total_log_density_evals),
         "bulk_ess_per_logp_eval": float(ess_per_logp_eval),
