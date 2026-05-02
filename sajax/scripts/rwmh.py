@@ -15,6 +15,7 @@ with warnings.catch_warnings():
     import arviz as az
 import blackjax
 import jax
+import jax.flatten_util
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,9 +40,9 @@ from model import (
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
 NDIM = len(PARAM_NAMES)
-NUM_BURNIN  = 2500
-NUM_SAMPLES = 2500
-NUM_CHAINS  = 8
+NUM_BURNIN  = 25000
+NUM_SAMPLES = 5000
+NUM_CHAINS  = 10
 
 
 def _unconstrained_prior_std(d) -> float:
@@ -62,7 +63,8 @@ def _unconstrained_prior_std(d) -> float:
 # smallest prior std in unconstrained space across all parameters.
 _UNC_PRIOR_STDS = {name: _unconstrained_prior_std(d) for name, d in PRIOR_DISTRIBUTIONS.items()}
 _SIGMA_MIN = min(_UNC_PRIOR_STDS.values())
-STEP_SIZE = 2.38 / np.sqrt(NDIM) * _SIGMA_MIN
+# STEP_SIZE = 2.38 / np.sqrt(NDIM) *_SIGMA_MIN
+STEP_SIZE = _SIGMA_MIN
 
 DIAG_STRIDE = 100
 PLOT_STRIDE = 1000
@@ -168,31 +170,31 @@ def main(seed: int = 0, save_outputs: bool = True):
     # Initialise chains in unconstrained space
     x0 = sample_initial_positions(init_key, NUM_CHAINS)
 
-    x0_constrained = jax.vmap(constrain_fn)(x0)
-    _print("Initial chain positions (constrained space):")
-    _print(f"  {'param':20s}  " + "  ".join(f"chain{i:02d}" for i in range(NUM_CHAINS)))
-    for name in PARAM_NAMES:
-        vals = np.array(x0_constrained[name])
-        _print(f"  {name:20s}  " + "  ".join(f"{v:8.4f}" for v in vals))
-
-    init_log_densities = []
-    for i in range(NUM_CHAINS):
-        x_i = jax.tree.map(lambda leaf: leaf[i], x0)
-        ld = float(log_density_fn(x_i))
-        init_log_densities.append(ld)
-        _print(f"  {i:>6}  {ld:>14.4f}  {str(np.isfinite(ld)):>8}  {str(np.isnan(ld)):>6}")
+    init_log_densities = [
+        float(log_density_fn(jax.tree.map(lambda leaf: leaf[i], x0)))
+        for i in range(NUM_CHAINS)
+    ]
     n_nan = sum(np.isnan(d) for d in init_log_densities)
     n_neginf = sum(np.isneginf(d) for d in init_log_densities)
     if n_nan or n_neginf:
-        _print(f"\n  WARNING: {n_nan} chain(s) have NaN log density, "
-               f"{n_neginf} have -inf. Chains will be stuck — "
-               f"check the light curve computation for numerical issues.")
-    else:
-        _print(f"\n  All {NUM_CHAINS} initial log densities are finite.")
+        _print(f"WARNING: {n_nan} chain(s) have NaN log density, "
+               f"{n_neginf} have -inf — check the light curve computation for numerical issues.")
+
+    # Build a custom proposal generator: proposed = current + sigma * N(0, I).
+    # blackjax.mcmc.random_walk.normal does not add to the current position when
+    # the position is a pytree of scalars (one dict entry per parameter), so we
+    # flatten/unflatten manually.
+    _x0_single = jax.tree.map(lambda leaf: leaf[0], x0)
+    _, _unravel_fn = jax.flatten_util.ravel_pytree(_x0_single)
+
+    def _proposal_generator(rng_key, position):
+        flat, _ = jax.flatten_util.ravel_pytree(position)
+        noise = STEP_SIZE * jax.random.normal(rng_key, shape=flat.shape)
+        return _unravel_fn(flat + noise)
 
     kernel = blackjax.rmh(
         log_density_fn,
-        proposal_generator=blackjax.mcmc.random_walk.normal(sigma=STEP_SIZE),
+        proposal_generator=_proposal_generator,
     )
     init_fn = jax.vmap(kernel.init)
     initial_states = init_fn(x0)
@@ -303,24 +305,20 @@ def main(seed: int = 0, save_outputs: bool = True):
     if not save_outputs:
         return diagnostics
 
-    stuck_params = [
-        p for p in PARAM_NAMES
-        if np.array(constrained_positions[p]).std(axis=1).min() <= 1e-10
-    ]
-    if stuck_params:
-        print(f"WARNING: {len(stuck_params)} parameter(s) have zero within-chain variance "
-              f"(chains stuck): {stuck_params}")
-    plot_vars = [p for p in PARAM_NAMES[:6] if p not in stuck_params]
-    if plot_vars:
-        az.plot_trace(idata, var_names=plot_vars, figsize=(14, 10))
-        plt.tight_layout()
-        plt.savefig(RWMH_OUTPUT_DIR / "traces_subset.png", dpi=150, bbox_inches="tight")
-        plt.close()
-    else:
-        print("WARNING: All parameters are stuck — skipping trace plot.")
+    plot_vars = PARAM_NAMES[:6]
+    az.plot_trace(idata, var_names=plot_vars, combined=True)
+    plt.tight_layout()
+    plt.savefig(RWMH_OUTPUT_DIR / "traces_subset.png")
+    plt.close()
 
     az.rcParams["plot.max_subplots"] = len(PARAM_NAMES) ** 2
-    az.plot_pair(idata, var_names=PARAM_NAMES, kind="kde", marginals=True, figsize=(24, 24))
+    az.plot_pair(
+        idata,
+        var_names=PARAM_NAMES,
+        kind="kde",
+        marginals=True,
+        figsize=(24, 24),
+    )
     plt.savefig(RWMH_OUTPUT_DIR / "corner_all.png", dpi=120, bbox_inches="tight")
     plt.close()
 
