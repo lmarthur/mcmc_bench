@@ -65,7 +65,7 @@ def test_obs_shape_matches_times():
 
 def test_param_names_match_ground_truth():
     assert PARAM_NAMES == list(GROUND_TRUTH.keys())
-    assert len(PARAM_NAMES) == 17
+    assert len(PARAM_NAMES) == 13
 
 
 def test_param_names_all_present_in_postprocess_output():
@@ -184,9 +184,6 @@ def test_postprocess_fn_uniform_params_within_bounds():
         "spot_lat":    (-90.0,  90.0),
         "spot_long":   (  0.0, 360.0),
         "spot_size":   (  1.0,  90.0),
-        "fac_lat":     (-90.0,  90.0),
-        "fac_long":    (  0.0, 360.0),
-        "fac_size":    (  1.0,  90.0),
         "inclination": ( 80.0, 100.0),
         "ldc_q1":      (  0.0,   1.0),
         "ldc_q2":      (  0.0,   1.0),
@@ -272,11 +269,10 @@ def test_ground_truth_residuals_at_noise_level():
     )
     result = _call_sajax(
         TIMES,
-        jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
-        jnp.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
-        jnp.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
-        np.stack([np.array([GROUND_TRUTH["spot_flux"]]),
-                  np.array([GROUND_TRUTH["fac_flux"]])]),
+        jnp.array([GROUND_TRUTH["spot_lat"]]),
+        jnp.array([GROUND_TRUTH["spot_long"]]),
+        jnp.array([GROUND_TRUTH["spot_size"]]),
+        np.stack([np.array([GROUND_TRUTH["spot_flux"]])]),
         GROUND_TRUTH["p_rot"],
         GROUND_TRUTH["planet_radius"],
         semimajor_axis,
@@ -306,10 +302,6 @@ def test_two_stage_residuals_at_noise_level():
     spot_long     = gt["spot_long"]
     spot_size     = gt["spot_size"]
     spot_flux     = gt["spot_flux"]
-    fac_lat       = gt["fac_lat"]
-    fac_long      = gt["fac_long"]
-    fac_size      = gt["fac_size"]
-    fac_flux      = gt["fac_flux"]
     P_rot         = gt["p_rot"]
     LDC_u1        = TRUE_LDC_U1
     LDC_u2        = TRUE_LDC_U2
@@ -332,9 +324,9 @@ def test_two_stage_residuals_at_noise_level():
         omega_peri   = arg_periapsis,
     )
 
-    ar_lat  = jnp.array([spot_lat, fac_lat])
-    ar_long = jnp.array([spot_long, fac_long])
-    ar_size = jnp.array([spot_size, fac_size])
+    ar_lat  = jnp.array([spot_lat])
+    ar_long = jnp.array([spot_long])
+    ar_size = jnp.array([spot_size])
 
     spr = m["star_pixel_rad"]
     ar_cart = jnp.stack([
@@ -349,7 +341,6 @@ def test_two_stage_residuals_at_noise_level():
 
     flux_active = jnp.stack([
         jnp.broadcast_to(spot_flux, (1,)),
-        jnp.broadcast_to(fac_flux,  (1,)),
     ])
 
     lc, _, _ = _compute_all_phases(
@@ -397,11 +388,10 @@ def test_call_sajax_activity_only_runs():
     )
     result = _call_sajax(
         TIMES,
-        jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
-        jnp.array([GROUND_TRUTH["spot_long"], GROUND_TRUTH["fac_long"]]),
-        jnp.array([GROUND_TRUTH["spot_size"], GROUND_TRUTH["fac_size"]]),
-        np.stack([np.array([GROUND_TRUTH["spot_flux"]]),
-                  np.array([GROUND_TRUTH["fac_flux"]])]),
+        jnp.array([GROUND_TRUTH["spot_lat"]]),
+        jnp.array([GROUND_TRUTH["spot_long"]]),
+        jnp.array([GROUND_TRUTH["spot_size"]]),
+        np.stack([np.array([GROUND_TRUTH["spot_flux"]])]),
         GROUND_TRUTH["p_rot"],
         0.0,
         semimajor_axis,
@@ -439,10 +429,10 @@ def test_plot_api_comparison():
     gt_semimajor = jnp.abs(gt["impact_param"] / jnp.cos(jnp.deg2rad(gt["inclination"])))
     lc_one_shot = np.array(_call_sajax(
         TIMES,
-        jnp.array([gt["spot_lat"], gt["fac_lat"]]),
-        jnp.array([gt["spot_long"], gt["fac_long"]]),
-        jnp.array([gt["spot_size"], gt["fac_size"]]),
-        np.stack([np.array([gt["spot_flux"]]), np.array([gt["fac_flux"]])]),
+        jnp.array([gt["spot_lat"]]),
+        jnp.array([gt["spot_long"]]),
+        jnp.array([gt["spot_size"]]),
+        np.stack([np.array([gt["spot_flux"]])]),
         gt["p_rot"],
         gt["planet_radius"],
         gt_semimajor,
@@ -463,9 +453,9 @@ def test_plot_api_comparison():
     eccentricity  = ecc_h**2 + ecc_k**2
     arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
     P_orb         = TRUE_P_ORB
-    ar_lat        = jnp.array([gt["spot_lat"], gt["fac_lat"]])
-    ar_long       = jnp.array([gt["spot_long"], gt["fac_long"]])
-    ar_size       = jnp.array([gt["spot_size"], gt["fac_size"]])
+    ar_lat        = jnp.array([gt["spot_lat"]])
+    ar_long       = jnp.array([gt["spot_long"]])
+    ar_size       = jnp.array([gt["spot_size"]])
 
     dynamic_phases_rot = (m["times"] / P_rot * 360.0) % 360.0
     planet_xyz_all = compute_planet_sky_positions(
@@ -484,7 +474,6 @@ def test_plot_api_comparison():
     )(ar_cart))(dynamic_phases_rot)
     flux_active = jnp.stack([
         jnp.broadcast_to(gt["spot_flux"], (1,)),
-        jnp.broadcast_to(gt["fac_flux"],  (1,)),
     ])
     lc_two_stage_raw, _, _ = _compute_all_phases(
         all_ar_carts, planet_xyz_all,
@@ -569,9 +558,6 @@ def test_sample_initial_positions_within_prior_bounds():
         "spot_lat":    (-90.0,  90.0),
         "spot_long":   (  0.0, 360.0),
         "spot_size":   (  1.0,  90.0),
-        "fac_lat":     (-90.0,  90.0),
-        "fac_long":    (  0.0, 360.0),
-        "fac_size":    (  1.0,  90.0),
         "inclination": ( 80.0, 100.0),
         "ldc_q1":      (  0.0,   1.0),
         "ldc_q2":      (  0.0,   1.0),
