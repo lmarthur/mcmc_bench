@@ -80,13 +80,12 @@ exposure_time = 250                                                     #seconds
 num_t = jnp.floor((((high_t - low_t) * 24 * 3600)/exposure_time))       #number of points
 TIMES = jnp.linspace(low_t, high_t, int(num_t))
 
-TRUE_P_ROT = 0.5              
+TRUE_P_ROT = 0.5                                                        #days
 
 # Synthetic flat spectra — single wavelength bin for broadband benchmark
 WAVELENGTH = np.array([550.0])       # nm
 FLUX_QUIET = np.array([1.0])
 FLUX_ACTIVE_SPOT = np.array([0.7])   # spot is 30% darker
-FLUX_ACTIVE_FACULA = np.array([1.1]) # facula is 10% brighter
 
 STELLAR_INC = 90.0          
 STELLAR_GRID_SIZE = 100
@@ -95,15 +94,11 @@ VE = 2.0
 SIGMA_NOISE = 100e-6     # ~100 ppm
 
 # ---------------------------------------------------------------------------
-# Ground-truth spot and facula
+# Ground-truth spot
 # ---------------------------------------------------------------------------
-TRUE_SPOT_LAT = 5.0      
-TRUE_SPOT_LONG = 5.0      
-TRUE_SPOT_SIZE = 11.0     
-
-TRUE_FACULA_LAT = -20.0
-TRUE_FACULA_LONG = 165.0
-TRUE_FACULA_SIZE = 16.0
+TRUE_SPOT_LAT = 5.0
+TRUE_SPOT_LONG = 5.0
+TRUE_SPOT_SIZE = 11.0
 
 # ---------------------------------------------------------------------------
 # Prior bounds: active regions
@@ -136,19 +131,10 @@ PRIOR_DISTRIBUTIONS = {
     # "spot_flux":     dist.Uniform(0.65, 0.75),
     "spot_flux":      dist.Normal(1.0, 0.2),
     # "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-    "fac_lat":       dist.Uniform(-25.0, -15.0),
-    # "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
-    "fac_long":      dist.Uniform(160.0, 170.0),
-    # "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
-    "fac_size":      dist.Uniform(15.0, 17.0),
-    # "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
-    # "fac_flux":      dist.Uniform(1.05, 1.15),
-    # "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
-    "fac_flux":      dist.Normal(1.0, 0.2),
     # "p_rot":         dist.LogUniform(0.1, 30),
     "p_rot":         dist.Normal(TRUE_P_ROT, 0.1),
-    "planet_radius": dist.LogUniform(0.095, 0.15),
-    # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
+    # "planet_radius": dist.LogUniform(0.095, 0.15),
+    "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
     "impact_param":  dist.Uniform(-1.0, 1.0),
     # "semimajor_axis":dist.LogUniform(1.5, 10),
     # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
@@ -172,10 +158,6 @@ PRIOR_DISTRIBUTIONS = {
 #     "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
 #     "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
 #     "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-#     "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
-#     "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
-#     "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
-#     "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
 #     "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
 #     "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
 #     "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
@@ -288,10 +270,10 @@ def generate_observations(seed: int = 0) -> np.ndarray:
     lc_true = np.array(
         _call_sajax(
             TIMES,
-            jnp.array([TRUE_SPOT_LAT, TRUE_FACULA_LAT]),
-            jnp.array([TRUE_SPOT_LONG, TRUE_FACULA_LONG]),
-            jnp.array([TRUE_SPOT_SIZE, TRUE_FACULA_SIZE]),
-            np.stack([FLUX_ACTIVE_SPOT, FLUX_ACTIVE_FACULA]),
+            jnp.array([TRUE_SPOT_LAT]),
+            jnp.array([TRUE_SPOT_LONG]),
+            jnp.array([TRUE_SPOT_SIZE]),
+            np.stack([FLUX_ACTIVE_SPOT]),
             TRUE_P_ROT,
             TRUE_PLANET_RADIUS,
             TRUE_SEMI_MAJOR,
@@ -315,10 +297,10 @@ OBS_LIGHT_CURVE = generate_observations(seed=42)
 LC_TRUE = np.array(
     _call_sajax(
         TIMES,
-        jnp.array([TRUE_SPOT_LAT, TRUE_FACULA_LAT]),
-        jnp.array([TRUE_SPOT_LONG, TRUE_FACULA_LONG]),
-        jnp.array([TRUE_SPOT_SIZE, TRUE_FACULA_SIZE]),
-        np.stack([FLUX_ACTIVE_SPOT, FLUX_ACTIVE_FACULA]),
+        jnp.array([TRUE_SPOT_LAT]),
+        jnp.array([TRUE_SPOT_LONG]),
+        jnp.array([TRUE_SPOT_SIZE]),
+        np.stack([FLUX_ACTIVE_SPOT]),
         TRUE_P_ROT,
         TRUE_PLANET_RADIUS,
         TRUE_SEMI_MAJOR,
