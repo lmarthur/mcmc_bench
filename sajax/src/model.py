@@ -318,7 +318,7 @@ LC_TRUE = np.array(
 # ---------------------------------------------------------------------------
 def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dict = STATIC_MODEL):
     """
-    NumPyro model for the spot + facula + planet posterior.
+    NumPyro model for the spot + planet posterior.
     Uses pre-built STATIC_MODEL for JIT-compatibility.
     """
     spot_lat = numpyro.sample("spot_lat", PRIOR_DISTRIBUTIONS["spot_lat"])
