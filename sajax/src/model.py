@@ -125,8 +125,8 @@ INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
 # ---------------------------------------------------------------------------
 #Narrow
 PRIOR_DISTRIBUTIONS = {
-    # "spot_lat":      dist.Uniform(4.0, 6.0),
-    "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
+    "spot_lat":      dist.Uniform(4.0, 6.0),
+    # "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
     "spot_long":     dist.Uniform(4.0, 6.0),
     # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
     "spot_size":     dist.Uniform(10.0, 12.0),
@@ -143,7 +143,7 @@ PRIOR_DISTRIBUTIONS = {
     # "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
     # "p_rot":         dist.Normal(TRUE_P_ROT, 0.001),
     "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
-    "planet_radius": dist.Uniform(0.095, 0.15),
+    "planet_radius": dist.Uniform(0., 1.),
     # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
     # "semimajor_axis":dist.Uniform(0.0, 50.0),
     "impact_param":dist.Uniform(-1.0, 1.0),

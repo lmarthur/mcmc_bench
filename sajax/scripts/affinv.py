@@ -40,15 +40,15 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 30000
-NUM_SAMPLES = 50000
+NUM_BURNIN = 10000
+NUM_SAMPLES = 20000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
 # Diagnostic stride controls — print a table row every DIAG_STRIDE steps,
 # save an LC snapshot every PLOT_STRIDE steps.
-DIAG_STRIDE = 1000
-PLOT_STRIDE = 1000
+DIAG_STRIDE = 100
+PLOT_STRIDE = 100
 
 
 

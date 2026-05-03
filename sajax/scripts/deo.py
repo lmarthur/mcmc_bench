@@ -152,7 +152,7 @@ def _to_physical_dict(param_vector):
     c["ldc_u2"] = float(np.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"]))
     return c
 
-def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_dir=None):
+def run_step_diagnostics(raw, save_lcs=False, output_dir=None):
     """
     Iterate through the full sample trace (including burn-in) and print a
     per-step table of walker-mean parameters and reduced chi-squared.
@@ -168,10 +168,10 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     from io import BytesIO
     from PIL import Image
 
-    n_steps, n_walkers, _ = raw.shape
+    n_samples, _ = raw.shape
 
     print(f"\n=== Step-by-Step Diagnostics  "
-          f"(steps 0–{n_steps-1}, stride={DIAG_STRIDE}, {n_walkers} walkers) ===")
+          f"(steps 0–{n_samples-1}, stride={DIAG_STRIDE}, ===")
     print(f"Values are the walker ensemble mean in constrained space.\n")
 
     col_w = 13
@@ -182,9 +182,8 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
 
     frames = []
 
-    for step_idx in range(0, n_steps, DIAG_STRIDE):
-        mean_unc = jnp.array(raw[step_idx].mean(axis=0))
-        c = constrain_fn(unravel_fn(mean_unc))
+    for step_idx in range(0, n_samples, DIAG_STRIDE):
+        c = jnp.array(raw[step_idx])
 
         chi2 = compute_chi2(c)
         param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
