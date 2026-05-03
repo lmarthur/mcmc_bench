@@ -326,11 +326,6 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     spot_size = numpyro.sample("spot_size", PRIOR_DISTRIBUTIONS["spot_size"])
     spot_flux = numpyro.sample("spot_flux", PRIOR_DISTRIBUTIONS["spot_flux"])
 
-    fac_lat = numpyro.sample("fac_lat", PRIOR_DISTRIBUTIONS["fac_lat"])
-    fac_long = numpyro.sample("fac_long", PRIOR_DISTRIBUTIONS["fac_long"])
-    fac_size = numpyro.sample("fac_size", PRIOR_DISTRIBUTIONS["fac_size"])
-    fac_flux = numpyro.sample("fac_flux", PRIOR_DISTRIBUTIONS["fac_flux"])
-
     P_rot = numpyro.sample("p_rot", PRIOR_DISTRIBUTIONS["p_rot"])
     ldc_q1 = numpyro.sample("ldc_q1", PRIOR_DISTRIBUTIONS["ldc_q1"])
     ldc_q2 = numpyro.sample("ldc_q2", PRIOR_DISTRIBUTIONS["ldc_q2"])
@@ -365,9 +360,9 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     )
 
     # Rotate Active Regions
-    ar_lat = jnp.array([spot_lat, fac_lat])
-    ar_long = jnp.array([spot_long, fac_long])
-    ar_size = jnp.array([spot_size, fac_size])
+    ar_lat = jnp.array([spot_lat])
+    ar_long = jnp.array([spot_long])
+    ar_size = jnp.array([spot_size])
 
     spr = model_dict["star_pixel_rad"]
     ar_cart = jnp.stack([
@@ -384,7 +379,6 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     # Integrate Light Curve
     flux_active = jnp.stack([
         jnp.broadcast_to(spot_flux, (1,)),
-        jnp.broadcast_to(fac_flux, (1,)),
     ])
 
     # Compute Flux (JAX)
@@ -512,9 +506,9 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
         arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
         P_orb = params["P_orb"]
 
-        ar_lat = jnp.array([params["spot_lat"], params["fac_lat"]])
-        ar_long = jnp.array([params["spot_long"], params["fac_long"]])
-        ar_size = jnp.array([params["spot_size"], params["fac_size"]])
+        ar_lat = jnp.array([params["spot_lat"]])
+        ar_long = jnp.array([params["spot_long"]])
+        ar_size = jnp.array([params["spot_size"]])
 
         dynamic_phases_rot = (model_dict["times"] / P_rot * 360.0) % 360.0
 
@@ -541,7 +535,6 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
 
         flux_active = jnp.stack([
             jnp.broadcast_to(params["spot_flux"], (1,)),
-            jnp.broadcast_to(params["fac_flux"], (1,)),
         ])
 
         lc, _, _ = _compute_all_phases(
@@ -629,9 +622,9 @@ def compute_lc_from_constrained(constrained: dict, model_dict: dict = STATIC_MOD
         omega_peri=constrained["arg_periapsis"],
     )
 
-    ar_lat  = jnp.array([constrained["spot_lat"],  constrained["fac_lat"]])
-    ar_long = jnp.array([constrained["spot_long"], constrained["fac_long"]])
-    ar_size = jnp.array([constrained["spot_size"],  constrained["fac_size"]])
+    ar_lat  = jnp.array([constrained["spot_lat"]])
+    ar_long = jnp.array([constrained["spot_long"]])
+    ar_size = jnp.array([constrained["spot_size"]])
 
     spr = model_dict["star_pixel_rad"]
     ar_cart = jnp.stack([
@@ -646,7 +639,6 @@ def compute_lc_from_constrained(constrained: dict, model_dict: dict = STATIC_MOD
 
     flux_active = jnp.stack([
         jnp.broadcast_to(jnp.asarray(constrained["spot_flux"]), (1,)),
-        jnp.broadcast_to(jnp.asarray(constrained["fac_flux"]),  (1,)),
     ])
 
     lc, _, _ = _compute_all_phases(
