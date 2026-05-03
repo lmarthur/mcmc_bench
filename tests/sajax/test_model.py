@@ -184,11 +184,9 @@ def test_postprocess_fn_uniform_params_within_bounds():
         "spot_lat":    (-90.0,  90.0),
         "spot_long":   (  0.0, 360.0),
         "spot_size":   (  1.0,  90.0),
-        "spot_flux":   (  0.1,   2.0),
         "fac_lat":     (-90.0,  90.0),
         "fac_long":    (  0.0, 360.0),
         "fac_size":    (  1.0,  90.0),
-        "fac_flux":    (  0.1,   2.0),
         "inclination": ( 80.0, 100.0),
         "ldc_q1":      (  0.0,   1.0),
         "ldc_q2":      (  0.0,   1.0),
@@ -269,6 +267,9 @@ def test_ground_truth_residuals_at_noise_level():
     match OBS_LIGHT_CURVE to within ~SIGMA_NOISE."""
     ecc_h = GROUND_TRUTH["ecc_h"]
     ecc_k = GROUND_TRUTH["ecc_k"]
+    semimajor_axis = jnp.abs(
+        GROUND_TRUTH["impact_param"] / jnp.cos(jnp.deg2rad(GROUND_TRUTH["inclination"]))
+    )
     result = _call_sajax(
         TIMES,
         jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
@@ -278,7 +279,7 @@ def test_ground_truth_residuals_at_noise_level():
                   np.array([GROUND_TRUTH["fac_flux"]])]),
         GROUND_TRUTH["p_rot"],
         GROUND_TRUTH["planet_radius"],
-        GROUND_TRUTH["semimajor_axis"],
+        semimajor_axis,
         jnp.deg2rad(GROUND_TRUTH["inclination"]),
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
@@ -313,8 +314,8 @@ def test_two_stage_residuals_at_noise_level():
     LDC_u1        = TRUE_LDC_U1
     LDC_u2        = TRUE_LDC_U2
     planet_radius = gt["planet_radius"]
-    semimajor     = gt["semimajor_axis"]
     inclination   = jnp.deg2rad(gt["inclination"])
+    semimajor     = jnp.abs(gt["impact_param"] / jnp.cos(inclination))
     eccentricity  = gt["ecc_h"]**2 + gt["ecc_k"]**2
     arg_periapsis = jnp.arctan2(gt["ecc_k"], gt["ecc_h"])
     P_orb         = TRUE_P_ORB
@@ -391,6 +392,9 @@ def test_call_sajax_activity_only_runs():
     """One-shot API with planet_radius=0 should produce a finite light curve."""
     ecc_h = GROUND_TRUTH["ecc_h"]
     ecc_k = GROUND_TRUTH["ecc_k"]
+    semimajor_axis = jnp.abs(
+        GROUND_TRUTH["impact_param"] / jnp.cos(jnp.deg2rad(GROUND_TRUTH["inclination"]))
+    )
     result = _call_sajax(
         TIMES,
         jnp.array([GROUND_TRUTH["spot_lat"], GROUND_TRUTH["fac_lat"]]),
@@ -400,7 +404,7 @@ def test_call_sajax_activity_only_runs():
                   np.array([GROUND_TRUTH["fac_flux"]])]),
         GROUND_TRUTH["p_rot"],
         0.0,
-        GROUND_TRUTH["semimajor_axis"],
+        semimajor_axis,
         jnp.deg2rad(GROUND_TRUTH["inclination"]),
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
@@ -432,6 +436,7 @@ def test_plot_api_comparison():
 
     ecc_h = gt["ecc_h"]
     ecc_k = gt["ecc_k"]
+    gt_semimajor = jnp.abs(gt["impact_param"] / jnp.cos(jnp.deg2rad(gt["inclination"])))
     lc_one_shot = np.array(_call_sajax(
         TIMES,
         jnp.array([gt["spot_lat"], gt["fac_lat"]]),
@@ -440,7 +445,7 @@ def test_plot_api_comparison():
         np.stack([np.array([gt["spot_flux"]]), np.array([gt["fac_flux"]])]),
         gt["p_rot"],
         gt["planet_radius"],
-        gt["semimajor_axis"],
+        gt_semimajor,
         jnp.deg2rad(gt["inclination"]),
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
@@ -453,8 +458,8 @@ def test_plot_api_comparison():
     LDC_u1        = TRUE_LDC_U1
     LDC_u2        = TRUE_LDC_U2
     planet_radius = gt["planet_radius"]
-    semimajor     = gt["semimajor_axis"]
     inclination   = jnp.deg2rad(gt["inclination"])
+    semimajor     = jnp.abs(gt["impact_param"] / jnp.cos(inclination))
     eccentricity  = ecc_h**2 + ecc_k**2
     arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
     P_orb         = TRUE_P_ORB
@@ -564,11 +569,9 @@ def test_sample_initial_positions_within_prior_bounds():
         "spot_lat":    (-90.0,  90.0),
         "spot_long":   (  0.0, 360.0),
         "spot_size":   (  1.0,  90.0),
-        "spot_flux":   (  0.1,   2.0),
         "fac_lat":     (-90.0,  90.0),
         "fac_long":    (  0.0, 360.0),
         "fac_size":    (  1.0,  90.0),
-        "fac_flux":    (  0.1,   2.0),
         "inclination": ( 80.0, 100.0),
         "ldc_q1":      (  0.0,   1.0),
         "ldc_q2":      (  0.0,   1.0),
