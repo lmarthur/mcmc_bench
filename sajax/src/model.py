@@ -159,55 +159,111 @@ ECC_H_SCALE = 0.3   # √e·cos(ω) prior scale
 ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 
 # ---------------------------------------------------------------------------
-# Prior distributions (numpyro) — single source of truth for all samplers
+# Prior distributions — single source of truth for all samplers.
 # ---------------------------------------------------------------------------
-#Narrow
+
+# Planet radius bounds: derived from M1V stellar radius measurement.
+# Min = 0.5 R_earth (approximate detection floor for 100 ppm noise);
+# Max = 1 R_jup (planet-to-brown-dwarf transition boundary).
+_PLANET_RADIUS_MIN = (0.5 * R_EARTH_RSUN) / R_STAR_MEASURED_RSUN
+_PLANET_RADIUS_MAX = R_JUP_RSUN / R_STAR_MEASURED_RSUN
+
+# Wide (physically motivated) priors
 PRIOR_DISTRIBUTIONS = {
-    "spot_lat":      dist.Uniform(4.0, 6.0),
-    # "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
-    "spot_long":     dist.Uniform(4.0, 6.0),
-    # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
-    "spot_size":     dist.Uniform(10.0, 12.0),
-    # "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-    # "spot_flux":     dist.Uniform(0.65, 0.75),
-    "spot_flux":      dist.Normal(1.0, 0.2),
-    # "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-    # "p_rot":         dist.LogUniform(0.1, 30),
-    "p_rot":         dist.Normal(TRUE_P_ROT, 0.1),
-    "planet_radius": dist.LogUniform(0.095, 0.15),
-    # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
+    # --- Spot geometry ---
+    # sin_lat ~ Uniform(-1, 1): sampling sin(latitude) gives isotropic distribution
+    # on the sphere — corrects for the cos(lat) Jacobian factor so that equal
+    # prior probability is assigned to equal solid angles.
+    "sin_lat":       dist.Uniform(-1.0, 1.0),
+    "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
+    # log-uniform: spot size is a scale parameter (Jeffreys prior);
+    # range spans detection floor (~1°) to giant polar spots (~45°).
+    "spot_size":     dist.LogUniform(1.0, 45.0),
+
+    # --- Spot flux via temperature deviation ---
+    # delta_T = T_active - T_star; Normal(0, 300 K) spans spot (negative)
+    # and facula (positive) regimes, with most probability near featureless
+    # photosphere (delta_T = 0). M dwarf spot contrasts are 100–800 K
+    # (Berdyugina 2005 review); faculae are 50–300 K above photosphere.
+    # spot_flux is derived as ((T_STAR + delta_T) / T_STAR)^4 (Stefan-Boltzmann).
+    # Note: strictly, a passband-specific Planck ratio is more accurate than T^4
+    # at optical wavelengths for cool stars, but the approximation error (~15%)
+    # is acceptable for this benchmarking study.
+    "delta_T":       dist.Normal(0.0, 300.0),
+
+    # --- Stellar rotation ---
+    # Prior centered on independently measured rotation period.
+    # McQuillan et al. 2014 (ApJS 211): σ ~ 0.2% for P~0.5 day star.
+    "p_rot":         dist.Normal(P_ROT_MEASURED, P_ROT_SIGMA),
+
+    # --- Planet geometry ---
+    # planet_radius in R_p/R_star: log-uniform (scale parameter);
+    # bounds derived from M1V stellar radius measurement.
+    "planet_radius": dist.LogUniform(_PLANET_RADIUS_MIN, _PLANET_RADIUS_MAX),
+
+    # semimajor_axis in a/R_star: log-uniform (scale parameter).
+    # Lower bound: Roche limit for rocky planet (~2.4 R_star for M1V;
+    #   a_Roche = 2.44*(rho_planet/rho_star)^(1/3), rho_M1V ~ 5640 kg/m³,
+    #   rho_rocky ~ 5500 kg/m³ → a_Roche ~ 2.42); use 2.5 with safety margin.
+    # Upper bound: detectability limit (P ~ 30 days for 1 M_sun star → a ~ 50);
+    # LogUniform prior on a encodes geometric transit selection bias:
+    # p(a) ∝ 1/a matches transit probability P_transit ∝ R_star/a.
+    "semimajor_axis": dist.LogUniform(2.5, 50.0),
+
+    # impact_param = (a/R_star) * cos(i): exact geometric prior on b given
+    # that a transit was observed is Uniform (see derivation in model docs).
     "impact_param":  dist.Uniform(-1.0, 1.0),
-    # "semimajor_axis":dist.LogUniform(1.5, 10),
-    # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
-    "inclination":   dist.Uniform(89.0, 91.0),
-    # "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-    "ecc_h":         dist.Uniform(-0.01, 0.01),
-    # "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
-    "ecc_k":         dist.Uniform(-0.01, 0.01),
-    # "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
-    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    # "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    # "ldc_q1":        dist.Uniform(0.34, 0.38),
+
+    # --- Eccentricity (Ford parameterization) ---
+    # ecc_h = √e · cos(ω),  ecc_k = √e · sin(ω).
+    # Independent Normal(0, σ) components → e ~ Rayleigh(σ) prior.
+    # P_orb = 1 day → tidal circularization timescale << stellar age for M
+    # dwarfs; eccentricity is expected to be near zero (Mazeh et al. 2008).
+    # σ = 0.05 → 90th percentile e ~ 0.11.
+    "ecc_h":         dist.Normal(0.0, 0.05),
+    "ecc_k":         dist.Normal(0.0, 0.05),
+
+    # --- Orbital period ---
+    # Prior centered on independently measured orbital period.
+    # ~5 transit observations, each with ~3 s timing uncertainty;
+    # σ_P ≈ σ_tc / (N-1) ~ 3s/4 ~ 1e-5 days.
+    "P_orb":         dist.Normal(P_ORB_MEASURED, P_ORB_SIGMA),
+
+    # --- Limb darkening (Kipping 2013 parameterization) ---
+    # u1 = 2√q1·q2,  u2 = √q1·(1 - 2q2).
+    # Uniform(0,1) in (q1,q2) is the CORRECT uninformative prior:
+    # it covers the full physical triangle in (u1,u2) space uniformly
+    # (Kipping 2013, MNRAS 435, 2152).
+    # For a tighter prior from stellar atmosphere models (PHOENIX, Claret &
+    # Bloemen 2011), replace with TruncatedNormal centered on model predictions:
+    #   dist.TruncatedNormal(loc=q1_pred, scale=0.05, low=0.0, high=1.0)
+    # M1V @ 550 nm: u1 ~ 0.5, u2 ~ 0.2  → q1 ~ 0.49, q2 ~ 0.36.
     "ldc_q1":        dist.Uniform(0.0, 1.0),
-    # "ldc_q2":        dist.Uniform(0.31, 0.35),
     "ldc_q2":        dist.Uniform(0.0, 1.0),
 }
 
-#Wide
+# ---------------------------------------------------------------------------
+# Narrow (debugging) prior block — comment out the wide block above and
+# uncomment this to test sampler near the ground truth.
+# ---------------------------------------------------------------------------
+# import jax.numpy as _jnp
 # PRIOR_DISTRIBUTIONS = {
-#     "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
-#     "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
-#     "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-#     "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-#     "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
-#     "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
-#     "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
-#     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-#     "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
-#     "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
-#     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-#     "ldc_q1":        dist.Uniform(0.0, 1.0),
-#     "ldc_q2":        dist.Uniform(0.0, 1.0),
+#     "sin_lat":       dist.Uniform(
+#                          float(_jnp.sin(_jnp.deg2rad(TRUE_SPOT_LAT - 1.0))),
+#                          float(_jnp.sin(_jnp.deg2rad(TRUE_SPOT_LAT + 1.0)))),
+#     "spot_long":     dist.Uniform(TRUE_SPOT_LONG - 1.0, TRUE_SPOT_LONG + 1.0),
+#     "spot_size":     dist.Uniform(TRUE_SPOT_SIZE - 1.0, TRUE_SPOT_SIZE + 1.0),
+#     "delta_T":       dist.Normal(TRUE_DELTA_T, 20.0),
+#     "p_rot":         dist.Normal(P_ROT_MEASURED, P_ROT_SIGMA),
+#     "planet_radius": dist.LogUniform(0.095, 0.115),
+#     "semimajor_axis":dist.LogUniform(float(TRUE_SEMI_MAJOR) * 0.95,
+#                                      float(TRUE_SEMI_MAJOR) * 1.05),
+#     "impact_param":  dist.Uniform(-0.1, 0.1),
+#     "ecc_h":         dist.Uniform(-0.01, 0.01),
+#     "ecc_k":         dist.Uniform(-0.01, 0.01),
+#     "P_orb":         dist.Normal(P_ORB_MEASURED, P_ORB_SIGMA),
+#     "ldc_q1":        dist.Uniform(0.34, 0.38),
+#     "ldc_q2":        dist.Uniform(0.31, 0.35),
 # }
 
 # ---------------------------------------------------------------------------
@@ -362,10 +418,12 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     NumPyro model for the spot + planet posterior.
     Uses pre-built STATIC_MODEL for JIT-compatibility.
     """
-    spot_lat = numpyro.sample("spot_lat", PRIOR_DISTRIBUTIONS["spot_lat"])
+    sin_lat = numpyro.sample("sin_lat", PRIOR_DISTRIBUTIONS["sin_lat"])
+    spot_lat = numpyro.deterministic("spot_lat", jnp.rad2deg(jnp.arcsin(sin_lat)))
     spot_long = numpyro.sample("spot_long", PRIOR_DISTRIBUTIONS["spot_long"])
     spot_size = numpyro.sample("spot_size", PRIOR_DISTRIBUTIONS["spot_size"])
-    spot_flux = numpyro.sample("spot_flux", PRIOR_DISTRIBUTIONS["spot_flux"])
+    delta_T = numpyro.sample("delta_T", PRIOR_DISTRIBUTIONS["delta_T"])
+    spot_flux = numpyro.deterministic("spot_flux", ((T_STAR + delta_T) / T_STAR) ** 4)
 
     P_rot = numpyro.sample("p_rot", PRIOR_DISTRIBUTIONS["p_rot"])
     ldc_q1 = numpyro.sample("ldc_q1", PRIOR_DISTRIBUTIONS["ldc_q1"])
@@ -375,9 +433,9 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
 
     # Planet parameters
     planet_radius = numpyro.sample("planet_radius", PRIOR_DISTRIBUTIONS["planet_radius"])
+    semimajor_axis = numpyro.sample("semimajor_axis", PRIOR_DISTRIBUTIONS["semimajor_axis"])
     impact_param = numpyro.sample("impact_param", PRIOR_DISTRIBUTIONS["impact_param"])
-    inclination = numpyro.sample("inclination", PRIOR_DISTRIBUTIONS["inclination"])
-    semimajor_axis = jnp.abs(impact_param / jnp.cos(jnp.deg2rad(inclination)))
+    inclination = numpyro.deterministic("inclination", jnp.arccos(impact_param / semimajor_axis))
     ecc_h = numpyro.sample("ecc_h", PRIOR_DISTRIBUTIONS["ecc_h"])
     ecc_k = numpyro.sample("ecc_k", PRIOR_DISTRIBUTIONS["ecc_k"])
     eccentricity = numpyro.deterministic("eccentricity", ecc_h**2 + ecc_k**2)
@@ -385,7 +443,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     P_orb = numpyro.sample("P_orb", PRIOR_DISTRIBUTIONS["P_orb"])
 
     # --- DYNAMIC CALCULATIONS (JAX) ---
-    
+
     # Recompute Stellar Rotation Phases based on sampled p_rot
     # We use the static 'times' from the model_dict
     dynamic_phases_rot = (model_dict["times"] / P_rot * 360.0) % 360.0
@@ -395,7 +453,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
         t0=TRUE_T0_TRANSIT,
         period=P_orb,
         a_over_rstar=semimajor_axis,
-        inclination=jnp.deg2rad(inclination),
+        inclination=inclination,
         ecc=eccentricity,
         omega_peri=arg_periapsis
     )

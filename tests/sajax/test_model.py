@@ -87,6 +87,34 @@ def test_planet_radius_prior_bounds_from_stellar_radius():
     assert d.high > 0.1 and d.high < 0.5
 
 
+def test_prior_distributions_has_new_params():
+    """PRIOR_DISTRIBUTIONS must contain sin_lat, delta_T, semimajor_axis
+    and must NOT contain spot_lat, spot_flux, or inclination."""
+    assert "sin_lat"        in PRIOR_DISTRIBUTIONS
+    assert "delta_T"        in PRIOR_DISTRIBUTIONS
+    assert "semimajor_axis" in PRIOR_DISTRIBUTIONS
+    assert "spot_lat"       not in PRIOR_DISTRIBUTIONS
+    assert "spot_flux"      not in PRIOR_DISTRIBUTIONS
+    assert "inclination"    not in PRIOR_DISTRIBUTIONS
+
+
+def test_ecc_prior_is_normal():
+    """ecc_h and ecc_k must be Normal(0, ~0.05) for tidal circularization."""
+    from numpyro.distributions import Normal
+    assert isinstance(PRIOR_DISTRIBUTIONS["ecc_h"], Normal)
+    assert isinstance(PRIOR_DISTRIBUTIONS["ecc_k"], Normal)
+    assert abs(float(PRIOR_DISTRIBUTIONS["ecc_h"].loc)) < 1e-6
+    assert float(PRIOR_DISTRIBUTIONS["ecc_h"].scale) < 0.2
+
+
+def test_p_rot_prior_centered_near_true():
+    """p_rot prior must be Normal centered within 3σ of TRUE_P_ROT."""
+    from numpyro.distributions import Normal
+    d = PRIOR_DISTRIBUTIONS["p_rot"]
+    assert isinstance(d, Normal)
+    assert abs(float(d.loc) - float(_mod.TRUE_P_ROT)) < 3 * float(d.scale)
+
+
 # ---------------------------------------------------------------------------
 # Shape / contract tests
 # ---------------------------------------------------------------------------
