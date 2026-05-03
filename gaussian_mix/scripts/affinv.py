@@ -25,8 +25,8 @@ AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
 NUM_BURNIN = 500
 NUM_SAMPLES = 2500
-NUM_WALKERS = 64
 NDIM = 2
+NUM_WALKERS = int(4*NDIM)
 
 
 def main(seed=0, save_outputs=True):

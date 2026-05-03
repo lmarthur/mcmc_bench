@@ -57,18 +57,12 @@ def main(seed=0, save_outputs=True):
         return log_density_fn(x) - logprior_fn(x)
 
     # --- Build adaptive tempered SMC with RMH inner kernel ---
-    # sigma is computed from the current tempering parameter (lambda) at each
-    # step using the 2.38/sqrt(d) * sigma_prior / sqrt(lambda) rule, matching
-    # the per-chain step size used in SEO/DEO.  We bake this into a jitted
-    # wrapper that reads state.tempering_param as a traced JAX value so the
-    # computation graph adapts dynamically without re-compilation.
-    _sigma_prior = (PRIOR_HIGH - PRIOR_LOW) / jnp.sqrt(12)
     _rmh_kernel = blackjax.rmh.build_kernel()
 
     @jax.jit
     def step_fn(key, state):
         lam = jnp.maximum(state.tempering_param, 1e-4)
-        sigma = (2.38 / jnp.sqrt(2)) * _sigma_prior / jnp.sqrt(lam)
+        sigma = (2.38 / jnp.sqrt(2)) * jnp.std(state.particles, axis=0)
 
         def _normal_proposal(rng_key, pos):
             return pos + jax.random.normal(rng_key, shape=pos.shape) * sigma
