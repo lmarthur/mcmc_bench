@@ -133,7 +133,8 @@ PRIOR_DISTRIBUTIONS = {
     # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
     "spot_size":     dist.Uniform(10.0, 12.0),
     # "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-    "spot_flux":     dist.Uniform(0.65, 0.75),
+    # "spot_flux":     dist.Uniform(0.65, 0.75),
+    "spot_flux":      dist.Normal(1.0, 0.2),
     # "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
     "fac_lat":       dist.Uniform(-25.0, -15.0),
     # "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
@@ -141,13 +142,14 @@ PRIOR_DISTRIBUTIONS = {
     # "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
     "fac_size":      dist.Uniform(15.0, 17.0),
     # "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
-    "fac_flux":      dist.Uniform(1.05, 1.15),
+    # "fac_flux":      dist.Uniform(1.05, 1.15),
     # "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
-    "p_rot":         dist.Normal(TRUE_P_ROT, 0.001),
+    "fac_flux":      dist.Normal(1.0, 0.2),
+    "p_rot":         dist.LogUniform(0.1, 30),
     # "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
-    "planet_radius": dist.Uniform(0.095, 0.15),
+    "planet_radius": dist.LogUniform(0.095, 0.15),
     # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
-    "semimajor_axis":dist.Uniform(4.0, 4.5),
+    "semimajor_axis":dist.LogUniform(1.5, 10),
     # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
     "inclination":   dist.Uniform(89.0, 91.0),
     # "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
@@ -931,3 +933,53 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path, map_par
     fig.savefig(lc_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved best-fit light curve to {lc_path}")
+
+
+def plot_prior_posterior(constrained_samples: dict, output_dir: Path,
+                         n_prior_samples: int = 3000, seed: int = 0):
+    """
+    One PNG per sampled parameter saved to output_dir/prior_posterior/.
+    Each plot shows the prior PDF (blue line), posterior histogram (red fill),
+    and a ground-truth vertical line (black dashed).
+    """
+    key = jax.random.PRNGKey(seed)
+    pp_dir = output_dir / "prior_posterior"
+    pp_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in PARAM_NAMES:
+        d = PRIOR_DISTRIBUTIONS[name]
+
+        key, sk = jax.random.split(key)
+        prior_samps = np.array(d.sample(sk, (n_prior_samples,)))
+        post_samps  = np.array(constrained_samples[name]).ravel()
+
+        all_vals = np.concatenate([prior_samps, post_samps])
+        x_lo = np.percentile(all_vals, 0.1)
+        x_hi = np.percentile(all_vals, 99.9)
+        pad  = 0.08 * (x_hi - x_lo) if x_hi > x_lo else 1e-6
+        x_lo -= pad
+        x_hi += pad
+
+        x_grid    = np.linspace(x_lo, x_hi, 400)
+        prior_pdf = np.exp(np.array(d.log_prob(jnp.array(x_grid))))
+
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        ax.plot(x_grid, prior_pdf, color="steelblue", lw=2, label="Prior")
+        post_clip = post_samps[(post_samps >= x_lo) & (post_samps <= x_hi)]
+        ax.hist(post_clip, bins=40, density=True,
+                color="crimson", alpha=0.35, histtype="stepfilled",
+                edgecolor="crimson", lw=1, label="Posterior")
+        if name in GROUND_TRUTH:
+            ax.axvline(GROUND_TRUTH[name], color="black", lw=1.5, ls="--", label="Truth")
+
+        ax.set_xlabel(name)
+        ax.set_ylabel("Density")
+        ax.set_xlim(x_lo, x_hi)
+        ax.legend(fontsize=8, frameon=False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        fig.tight_layout()
+        fig.savefig(pp_dir / f"{name}.png", dpi=120, bbox_inches="tight")
+        plt.close(fig)
+
+    print(f"Saved prior/posterior plots to {pp_dir}/")

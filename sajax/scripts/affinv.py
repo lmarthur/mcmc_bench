@@ -28,6 +28,7 @@ from model import (
     plot_model,
     sample_initial_positions,
     plot_bestfit_lightcurve,
+    plot_prior_posterior,
     compute_chi2,
     compute_lc_from_constrained,
     OUTPUT_DIR,
@@ -345,6 +346,9 @@ def main(seed=0, save_outputs=True):
 
         # 3. Best-fit light curve using posterior mean
         plot_bestfit_lightcurve(constrained, AFFINV_OUTPUT_DIR, map_params=map_params)
+
+        # 4. Per-parameter prior vs posterior plots
+        plot_prior_posterior(constrained, AFFINV_OUTPUT_DIR)
 
     return diagnostics
 
