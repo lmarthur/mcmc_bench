@@ -29,6 +29,7 @@ from model import (
     make_log_density,
     plot_model,
     plot_bestfit_lightcurve,
+    plot_prior_posterior,
     _call_sajax,
     compute_chi2,
     compute_lc_from_constrained,
@@ -147,33 +148,34 @@ def _to_physical_dict(param_vector):
     """Convert a flat parameter vector (indexed by PARAM_NAMES) to a dict
     including derived physical quantities needed by _call_sajax / compute_lc_from_constrained."""
     c = {name: float(param_vector[i]) for i, name in enumerate(PARAM_NAMES)}
+    c["semimajor_axis"] = float(np.abs(c["impact_param"] / np.cos(np.deg2rad(c["inclination"]))))
     c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
     c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
     c["ldc_u2"] = float(np.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"]))
     return c
 
-def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_dir=None):
+def run_step_diagnostics(raw, save_lcs=False, output_dir=None):
     """
-    Iterate through the full sample trace (including burn-in) and print a
-    per-step table of walker-mean parameters and reduced chi-squared.
+    Iterate through the cold-chain sample trace and print a per-step table of
+    parameters and reduced chi-squared.
 
     Saves an animated GIF of LC snapshots to output_dir/lc_evolution.gif
     every PLOT_STRIDE steps when save_lcs=True.
 
     Parameters
     ----------
-    raw : ndarray, shape (NUM_STEPS, NUM_WALKERS, NDIM)
-        Raw unconstrained samples straight from trace.samples.coordinates.
+    raw : ndarray, shape (NUM_SAMPLES, NDIM)
+        Constrained flat samples from the cold chain.
     """
     from io import BytesIO
     from PIL import Image
 
-    n_steps, n_walkers, _ = raw.shape
+    n_samples, _ = raw.shape
 
     print(f"\n=== Step-by-Step Diagnostics  "
-          f"(steps 0–{n_steps-1}, stride={DIAG_STRIDE}, {n_walkers} walkers) ===")
-    print(f"Values are the walker ensemble mean in constrained space.\n")
+          f"(steps 0–{n_samples-1}, stride={DIAG_STRIDE}) ===")
+    print(f"Values are the constrained parameter values.\n")
 
     col_w = 13
     header = f"{'step':>5}  {'chi2_red':>9}  " + "  ".join(f"{p:>{col_w}}" for p in _DIAG_PARAMS)
@@ -183,9 +185,8 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
 
     frames = []
 
-    for step_idx in range(0, n_steps, DIAG_STRIDE):
-        mean_unc = jnp.array(raw[step_idx].mean(axis=0))
-        c = constrain_fn(unravel_fn(mean_unc))
+    for step_idx in range(0, n_samples, DIAG_STRIDE):
+        c = _to_physical_dict(raw[step_idx])
 
         chi2 = compute_chi2(c)
         param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
@@ -396,6 +397,9 @@ def main(seed: int = 0, save_outputs: bool = True):
     # This is the "constrained_samples" dict: {name: array of shape (NUM_SAMPLES,)}
     constrained_samples = {name: cold_samples[:, i] for i, name in enumerate(PARAM_NAMES)}
     # Add derived quantities so plot_bestfit_lightcurve / compute_lc_from_constrained can use them
+    impact_param_arr = cold_samples[:, PARAM_NAMES.index("impact_param")]
+    inclination_arr  = cold_samples[:, PARAM_NAMES.index("inclination")]
+    constrained_samples["semimajor_axis"] = np.abs(impact_param_arr / np.cos(np.deg2rad(inclination_arr)))
     ecc_h = cold_samples[:, PARAM_NAMES.index("ecc_h")]
     ecc_k = cold_samples[:, PARAM_NAMES.index("ecc_k")]
     constrained_samples["eccentricity"]  = ecc_h ** 2 + ecc_k ** 2
@@ -567,7 +571,10 @@ def main(seed: int = 0, save_outputs: bool = True):
     # 3. Best-fit light curve — delegate to model.py
     plot_bestfit_lightcurve(constrained_samples, SEO_OUTPUT_DIR, map_params=None)
 
-    # 4. Per-pair swap rejection rates
+    # 4. Per-parameter prior vs posterior plots
+    plot_prior_posterior(constrained_samples, SEO_OUTPUT_DIR)
+
+    # 5. Per-pair swap rejection rates
     pair_labels = [f"{betas[i]:.3f}↔{betas[i+1]:.3f}" for i in range(NUM_CHAINS - 1)]
     fig, ax = plt.subplots(figsize=(8, 3))
     ax.bar(range(NUM_CHAINS - 1), mean_swap_rejection, color="steelblue", alpha=0.8)

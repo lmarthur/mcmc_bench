@@ -28,6 +28,7 @@ from model import (
     plot_model,
     sample_initial_positions,
     plot_bestfit_lightcurve,
+    plot_prior_posterior,
     compute_chi2,
     compute_lc_from_constrained,
     OUTPUT_DIR,
@@ -40,8 +41,8 @@ from model import (
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 10000
-NUM_SAMPLES = 20000
+NUM_BURNIN = 1000
+NUM_SAMPLES = 2000
 NUM_WALKERS = 64
 NDIM = len(PARAM_NAMES)
 
@@ -72,9 +73,6 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     raw : ndarray, shape (NUM_STEPS, NUM_WALKERS, NDIM)
         Raw unconstrained samples straight from trace.samples.coordinates.
     """
-    from io import BytesIO
-    from PIL import Image
-
     n_steps, n_walkers, _ = raw.shape
 
     print(f"\n=== Step-by-Step Diagnostics  "
@@ -86,6 +84,9 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     sep    = "=" * len(header)
     print(header)
     print(sep)
+
+    from io import BytesIO
+    from PIL import Image
 
     frames = []
 
@@ -122,7 +123,6 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
 
             fig.tight_layout()
 
-            # Render figure to in-memory PIL Image
             buf = BytesIO()
             fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
             plt.close(fig)
@@ -136,8 +136,8 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
             gif_path,
             save_all=True,
             append_images=frames[1:],
-            duration=250,   # ms per frame
-            loop=0,         # loop forever
+            duration=250,
+            loop=0,
         )
         print(f"\nSaved LC evolution GIF ({len(frames)} frames) to {gif_path}")
 
@@ -358,6 +358,9 @@ def main(seed=0, save_outputs=True):
 
         # 3. Best-fit light curve using posterior mean
         plot_bestfit_lightcurve(constrained, AFFINV_OUTPUT_DIR, map_params=map_params)
+
+        # 4. Per-parameter prior vs posterior plots
+        plot_prior_posterior(constrained, AFFINV_OUTPUT_DIR)
 
     return diagnostics
 
