@@ -23,7 +23,7 @@ from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAU
 
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
-NUM_BURNIN = 500
+NUM_BURNIN = 1000
 NUM_SAMPLES = 10000
 NUM_CHAINS = 4
 STEP_SIZE = (2.38 / np.sqrt(2)) * (PRIOR_HIGH - PRIOR_LOW) / np.sqrt(12)  # 2.38/sqrt(d) * sigma_prior, d=2
