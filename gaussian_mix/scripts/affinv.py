@@ -23,7 +23,7 @@ from model import make_log_density, plot_model, OUTPUT_DIR, DEFAULT_MEANS, DEFAU
 
 AFFINV_OUTPUT_DIR = OUTPUT_DIR / "affinv"
 
-NUM_BURNIN = 500
+NUM_BURNIN = 250
 NUM_SAMPLES = 2500
 NDIM = 2
 NUM_WALKERS = int(4*NDIM)
