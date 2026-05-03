@@ -14,4 +14,4 @@ module load cuda/13.0.1
 source activate base
 conda activate mcmc_bench
 
-python -u gaussian_mix/scripts/scaling.py --force
+python -u gaussian_mix/scripts/scaling_study.py --force

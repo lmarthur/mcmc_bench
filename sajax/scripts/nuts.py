@@ -25,6 +25,7 @@ from model import (
     plot_model,
     sample_initial_positions,
     plot_bestfit_lightcurve,
+    plot_prior_posterior,
     OUTPUT_DIR,
     PARAM_NAMES,
     GROUND_TRUTH,
@@ -236,6 +237,9 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # Best-fit light curve using posterior mean
     plot_bestfit_lightcurve(constrained_positions, NUTS_OUTPUT_DIR)
+
+    # Per-parameter prior vs posterior plots
+    plot_prior_posterior(constrained_positions, NUTS_OUTPUT_DIR)
 
     return diagnostics
 

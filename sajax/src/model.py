@@ -92,7 +92,7 @@ STELLAR_INC = 90.0
 STELLAR_GRID_SIZE = 100
 VE = 2.0                 
 
-SIGMA_NOISE = 200e-6     # ~200 ppm
+SIGMA_NOISE = 100e-6     # ~100 ppm
 
 # ---------------------------------------------------------------------------
 # Ground-truth spot and facula
@@ -119,6 +119,8 @@ FLUX_MIN, FLUX_MAX = 0.1, 2.0
 PLANET_RADIUS_MIN, PLANET_RADIUS_MAX = 0.001, 0.3  # Rp/Rs
 SEMI_MAJOR_MIN, SEMI_MAJOR_MAX = 0.0, 10.0         # a/R* (semi-major axis in stellar radii)
 INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
+ECC_H_SCALE = 0.3   # √e·cos(ω) prior scale
+ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 
 # ---------------------------------------------------------------------------
 # Prior distributions (numpyro) — single source of truth for all samplers
@@ -131,7 +133,8 @@ PRIOR_DISTRIBUTIONS = {
     # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
     "spot_size":     dist.Uniform(10.0, 12.0),
     # "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-    "spot_flux":     dist.Uniform(0.65, 0.75),
+    # "spot_flux":     dist.Uniform(0.65, 0.75),
+    "spot_flux":      dist.Normal(1.0, 0.2),
     # "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
     "fac_lat":       dist.Uniform(-25.0, -15.0),
     # "fac_lat":       dist.Uniform(LAT_MIN, LAT_MAX),
@@ -139,22 +142,23 @@ PRIOR_DISTRIBUTIONS = {
     # "fac_long":      dist.Uniform(LONG_MIN, LONG_MAX),
     "fac_size":      dist.Uniform(15.0, 17.0),
     # "fac_size":      dist.Uniform(SIZE_MIN, SIZE_MAX),
-    "fac_flux":      dist.Uniform(1.05, 1.15),
+    # "fac_flux":      dist.Uniform(1.05, 1.15),
     # "fac_flux":      dist.Uniform(FLUX_MIN, FLUX_MAX),
-    # "p_rot":         dist.Normal(TRUE_P_ROT, 0.001),
-    "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
-    "planet_radius": dist.Uniform(0., 1.),
+    "fac_flux":      dist.Normal(1.0, 0.2),
+    # "p_rot":         dist.LogUniform(0.1, 30),
+    "p_rot":         dist.Normal(TRUE_P_ROT, 0.1),
+    "planet_radius": dist.LogUniform(0.095, 0.15),
     # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
-    # "semimajor_axis":dist.Uniform(0.0, 50.0),
-    "impact_param":dist.Uniform(-1.0, 1.0),
+    "impact_param":  dist.Uniform(-1.0, 1.0),
+    # "semimajor_axis":dist.LogUniform(1.5, 10),
     # "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
-    # "inclination":   dist.Uniform(89.0, 91.0),
-    "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-    # "ecc_h":         dist.Uniform(-0.01, 0.01),
-    "ecc_h":         dist.Uniform(-1.0, 1.0),
-    # "ecc_k":         dist.Uniform(-0.01, 0.01),
-    "ecc_k":         dist.Uniform(-1.0, 1.0),
-    "P_orb":         dist.LogNormal(jnp.log(TRUE_P_ORB), 0.0005),
+    "inclination":   dist.Uniform(89.0, 91.0),
+    # "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
+    "ecc_h":         dist.Uniform(-0.01, 0.01),
+    # "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
+    "ecc_k":         dist.Uniform(-0.01, 0.01),
+    # "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
+    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     # "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
     # "ldc_q1":        dist.Uniform(0.34, 0.38),
     "ldc_q1":        dist.Uniform(0.0, 1.0),
@@ -355,7 +359,7 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     planet_radius = numpyro.sample("planet_radius", PRIOR_DISTRIBUTIONS["planet_radius"])
     impact_param = numpyro.sample("impact_param", PRIOR_DISTRIBUTIONS["impact_param"])
     inclination = numpyro.sample("inclination", PRIOR_DISTRIBUTIONS["inclination"])
-    semimajor_axis = jnp.abs(impact_param/jnp.cos(jnp.deg2rad(inclination)))
+    semimajor_axis = jnp.abs(impact_param / jnp.cos(jnp.deg2rad(inclination)))
     ecc_h = numpyro.sample("ecc_h", PRIOR_DISTRIBUTIONS["ecc_h"])
     ecc_k = numpyro.sample("ecc_k", PRIOR_DISTRIBUTIONS["ecc_k"])
     eccentricity = numpyro.deterministic("eccentricity", ecc_h**2 + ecc_k**2)
@@ -465,7 +469,7 @@ def make_constrain_fn():
 
     def constrain_fn(z):
         c = {name: transforms[name](z[name]) for name in transforms}
-        c["semimajor_axis"]  = jnp.abs(c["impact_param"] / jnp.cos(jnp.deg2rad(c["inclination"])))
+        c["semimajor_axis"] = jnp.abs(c["impact_param"] / jnp.cos(jnp.deg2rad(c["inclination"])))
         c["eccentricity"]  = c["ecc_h"]**2 + c["ecc_k"]**2
         c["arg_periapsis"] = jnp.arctan2(c["ecc_k"], c["ecc_h"])
         c["ldc_u1"] = 2 * jnp.sqrt(c["ldc_q1"]) * c["ldc_q2"]
@@ -519,7 +523,7 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
         planet_radius = params["planet_radius"]
         impact_param = params["impact_param"]
         inclination = params["inclination"]
-        semimajor_axis = jnp.abs(impact_param/jnp.cos(jnp.deg2rad(inclination)))
+        semimajor_axis = jnp.abs(impact_param / jnp.cos(jnp.deg2rad(inclination)))
         ecc_h = params["ecc_h"]
         ecc_k = params["ecc_k"]
         eccentricity = ecc_h**2 + ecc_k**2
@@ -710,7 +714,7 @@ GROUND_TRUTH = {
     "fac_flux": FLUX_ACTIVE_FACULA[0],
     "p_rot": TRUE_P_ROT,
     "planet_radius": TRUE_PLANET_RADIUS,
-    "impact_param": jnp.abs(TRUE_SEMI_MAJOR*jnp.cos(TRUE_INCLINATION)),
+    "impact_param": jnp.abs(TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)),
     # "semimajor_axis": TRUE_SEMI_MAJOR,
     "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
     "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
@@ -877,7 +881,7 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path, map_par
             mean_c["ldc_u2"],
         )["lc"]
     )
-
+    
     fig, (ax_lc, ax_res) = plt.subplots(2, 1, figsize=(10, 6), sharex=True,
                                          gridspec_kw={"height_ratios": [3, 1]})
     ax_lc.scatter(TIMES, OBS_LIGHT_CURVE, s=4, color="orange", alpha=0.6,
@@ -934,3 +938,53 @@ def plot_bestfit_lightcurve(constrained_samples: dict, output_dir: Path, map_par
     fig.savefig(lc_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved best-fit light curve to {lc_path}")
+
+
+def plot_prior_posterior(constrained_samples: dict, output_dir: Path,
+                         n_prior_samples: int = 3000, seed: int = 0):
+    """
+    One PNG per sampled parameter saved to output_dir/prior_posterior/.
+    Each plot shows the prior PDF (blue line), posterior histogram (red fill),
+    and a ground-truth vertical line (black dashed).
+    """
+    key = jax.random.PRNGKey(seed)
+    pp_dir = output_dir / "prior_posterior"
+    pp_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in PARAM_NAMES:
+        d = PRIOR_DISTRIBUTIONS[name]
+
+        key, sk = jax.random.split(key)
+        prior_samps = np.array(d.sample(sk, (n_prior_samples,)))
+        post_samps  = np.array(constrained_samples[name]).ravel()
+
+        all_vals = np.concatenate([prior_samps, post_samps])
+        x_lo = np.percentile(all_vals, 0.1)
+        x_hi = np.percentile(all_vals, 99.9)
+        pad  = 0.08 * (x_hi - x_lo) if x_hi > x_lo else 1e-6
+        x_lo -= pad
+        x_hi += pad
+
+        x_grid    = np.linspace(x_lo, x_hi, 400)
+        prior_pdf = np.exp(np.array(d.log_prob(jnp.array(x_grid))))
+
+        fig, ax = plt.subplots(figsize=(5, 3.5))
+        ax.plot(x_grid, prior_pdf, color="steelblue", lw=2, label="Prior")
+        post_clip = post_samps[(post_samps >= x_lo) & (post_samps <= x_hi)]
+        ax.hist(post_clip, bins=40, density=True,
+                color="crimson", alpha=0.35, histtype="stepfilled",
+                edgecolor="crimson", lw=1, label="Posterior")
+        if name in GROUND_TRUTH:
+            ax.axvline(GROUND_TRUTH[name], color="black", lw=1.5, ls="--", label="Truth")
+
+        ax.set_xlabel(name)
+        ax.set_ylabel("Density")
+        ax.set_xlim(x_lo, x_hi)
+        ax.legend(fontsize=8, frameon=False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        fig.tight_layout()
+        fig.savefig(pp_dir / f"{name}.png", dpi=120, bbox_inches="tight")
+        plt.close(fig)
+
+    print(f"Saved prior/posterior plots to {pp_dir}/")

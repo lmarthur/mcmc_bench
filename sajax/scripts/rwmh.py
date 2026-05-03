@@ -26,6 +26,7 @@ from model import (
     plot_model,
     sample_initial_positions,
     plot_bestfit_lightcurve,
+    plot_prior_posterior,
     compute_chi2,
     compute_lc_from_constrained,
     OUTPUT_DIR,
@@ -51,8 +52,10 @@ def _unconstrained_prior_std(d) -> float:
     Uniform(a, b): inverse bijection is logit → logistic distribution, std = π/√3.
     Normal(μ, σ) / LogNormal(μ, σ): bijection is identity / log, unconstrained std = σ.
     """
-    from numpyro.distributions import Uniform, Normal, LogNormal
-    if isinstance(d, Uniform):
+    from numpyro.distributions import Uniform, Normal, LogNormal, LogUniform
+    if isinstance(d, (Uniform, LogUniform)):
+        # Both have bounded support; biject_to applies a logistic transform,
+        # so the unconstrained variable is logistic(0,1) with std = π/√3.
         return float(np.pi / np.sqrt(3.0))
     elif isinstance(d, (Normal, LogNormal)):
         return float(d.scale)
@@ -252,7 +255,11 @@ def main(seed: int = 0, save_outputs: bool = True):
         }
     else:
         all_unc_steps = {name: np.array(unc_positions[name]) for name in unc_positions}
-    run_step_diagnostics(all_unc_steps, constrain_fn, save_lcs=save_outputs,
+    # Convert {name: (NUM_CHAINS, total_steps)} -> (total_steps, NUM_CHAINS, NDIM)
+    all_unc_arr = np.stack(
+        [np.array(all_unc_steps[name]) for name in PARAM_NAMES], axis=-1
+    ).transpose(1, 0, 2)
+    run_step_diagnostics(all_unc_arr, constrain_fn, _unravel_fn, save_lcs=save_outputs,
                          output_dir=RWMH_OUTPUT_DIR)
     
     # --- Extract MAP sample ---
@@ -423,6 +430,9 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     # 3. Best-fit light curve — delegate to model.py
     plot_bestfit_lightcurve(constrained_positions, RWMH_OUTPUT_DIR, map_params=map_params)
+
+    # 4. Per-parameter prior vs posterior plots
+    plot_prior_posterior(constrained_positions, RWMH_OUTPUT_DIR)
 
     return diagnostics
 
