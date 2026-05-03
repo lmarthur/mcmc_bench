@@ -2,14 +2,14 @@
 Model of an exoplanetary transit with a spot crossing for sampler benchmarking.
 
 Default configuration: a star of radius 1 with quadratic limb darkening,
-a single circular spot and a facula on the stellar disk. A planet transits
-the star, with the transit light curve computed via jaxoplanet and the
-stellar activity modulation computed via sajax.
+a single circular spot on the stellar disk. A planet transits the star,
+with the transit light curve computed via jaxoplanet and the stellar
+activity modulation computed via sajax.
 
 The combined light curve is:
     lc_total = lc_activity * (1 + lc_transit)
 
-where lc_activity comes from sajax (rotational modulation from spots/faculae)
+where lc_activity comes from sajax (rotational modulation from the spot)
 and lc_transit comes from jaxoplanet (limb-darkened transit model).
 
 A NumPyro model is used to define the joint distribution over the spot
