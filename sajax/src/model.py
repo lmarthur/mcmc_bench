@@ -685,13 +685,13 @@ GROUND_TRUTH = {
     "spot_flux": FLUX_ACTIVE_SPOT[0],
     "p_rot": TRUE_P_ROT,
     "planet_radius": TRUE_PLANET_RADIUS,
+    "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
+    "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
     "semimajor_axis": float(TRUE_SEMI_MAJOR),
     "impact_param":  float(TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)),
     "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
     "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
     "P_orb": TRUE_P_ORB,
-    "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
-    "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
 }
 
 PARAM_NAMES = list(GROUND_TRUTH.keys())
