@@ -507,14 +507,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     n_params = len(PARAM_NAMES)
     az.rcParams["plot.max_subplots"] = n_params ** 2
 
-    # Fall back to scatter if any parameter is degenerate (chain stuck → zero variance → KDE fails).
-    param_stds = cold_samples.std(axis=0)
-    degenerate = np.any(param_stds < 1e-10)
-    if degenerate:
-        stuck = [PARAM_NAMES[i] for i, s in enumerate(param_stds) if s < 1e-10]
-        _print(f"  WARNING: degenerate parameters detected (chain stuck): {stuck}. "
-               "Falling back to scatter corner plot.")
-    pair_kind = "scatter" if degenerate else "kde"
+    pair_kind = "scatter"
 
     axes = az.plot_pair(
         idata,

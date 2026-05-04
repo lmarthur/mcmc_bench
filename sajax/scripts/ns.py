@@ -327,7 +327,7 @@ def main(seed=0, save_outputs=True):
     axes = az.plot_pair(
         idata,
         var_names=PARAM_NAMES,
-        kind="kde",
+        kind="scatter",
         marginals=True,
         figsize=(24, 24),
     )
