@@ -40,6 +40,7 @@ rotate_active_region     = _mod.rotate_active_region
 generate_observations    = _mod.generate_observations
 make_inference_fns       = _mod.make_inference_fns
 make_constrain_fn        = _mod.make_constrain_fn
+make_log_likelihood      = _mod.make_log_likelihood
 make_log_ref             = _mod.make_log_ref
 plot_model               = _mod.plot_model
 sajax_model              = _mod.sajax_model
@@ -113,6 +114,16 @@ def test_p_rot_prior_centered_near_true():
     d = PRIOR_DISTRIBUTIONS["p_rot"]
     assert isinstance(d, Normal)
     assert abs(float(d.loc) - float(_mod.TRUE_P_ROT)) < 3 * float(d.scale)
+
+
+def test_log_likelihood_at_ground_truth_is_finite():
+    """make_log_likelihood evaluated at GROUND_TRUTH params must return
+    a finite value. GROUND_TRUTH uses new parameterization (sin_lat, delta_T,
+    semimajor_axis)."""
+    ll_fn = make_log_likelihood()
+    val = float(ll_fn(GROUND_TRUTH))
+    assert np.isfinite(val), f"log_likelihood at ground truth is {val}"
+    assert val > -1e6, "log_likelihood at ground truth is unreasonably small"
 
 
 # ---------------------------------------------------------------------------

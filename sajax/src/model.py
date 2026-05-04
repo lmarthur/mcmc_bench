@@ -589,30 +589,50 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
     """
     Returns log p(y_obs | params) for a constrained (physical) parameter dict.
     For use with nested samplers (e.g. JAXNS) that handle the prior separately.
-    Expects dict keys matching PRIOR_DISTRIBUTIONS (ecc_h/ecc_k and ldc_q1/ldc_q2
-    are the sampled parameterization; eccentricity/arg_periapsis/ldc_u1/ldc_u2 are derived).
+
+    New parameterization (matching PRIOR_DISTRIBUTIONS):
+      - sin_lat    : sin of spot latitude → spot_lat via arcsin
+      - delta_T    : temperature deviation (K) → spot_flux via Stefan-Boltzmann
+      - semimajor_axis : a/R_star → inclination derived as arccos(impact_param/semimajor_axis)
+      - ecc_h/ecc_k, ldc_q1/ldc_q2 are the sampled parameterization;
+        eccentricity/arg_periapsis/ldc_u1/ldc_u2 are derived internally.
     """
     y_obs_arr = jnp.array(y_obs)
 
     def log_likelihood(params):
-        P_rot = params["p_rot"]
+        # --- Spot geometry: sin_lat → spot_lat ---
+        sin_lat   = params["sin_lat"]
+        spot_lat  = jnp.rad2deg(jnp.arcsin(sin_lat))
+        spot_long = params["spot_long"]
+        spot_size = params["spot_size"]
+
+        # --- Spot flux: delta_T → spot_flux (Stefan-Boltzmann) ---
+        delta_T   = params["delta_T"]
+        spot_flux = ((T_STAR + delta_T) / T_STAR) ** 4
+
+        # --- Rotation and limb darkening ---
+        P_rot  = params["p_rot"]
         ldc_q1 = params["ldc_q1"]
         ldc_q2 = params["ldc_q2"]
         LDC_u1 = 2 * jnp.sqrt(ldc_q1) * ldc_q2
         LDC_u2 = jnp.sqrt(ldc_q1) * (1 - 2 * ldc_q2)
-        planet_radius = params["planet_radius"]
-        impact_param = params["impact_param"]
-        inclination = params["inclination"]
-        semimajor_axis = jnp.abs(impact_param / jnp.cos(jnp.deg2rad(inclination)))
+
+        # --- Orbital geometry: semimajor_axis + impact_param → inclination ---
+        planet_radius  = params["planet_radius"]
+        semimajor_axis = params["semimajor_axis"]
+        impact_param   = params["impact_param"]
+        inclination    = jnp.rad2deg(jnp.arccos(impact_param / semimajor_axis))
+
+        # --- Eccentricity ---
         ecc_h = params["ecc_h"]
         ecc_k = params["ecc_k"]
-        eccentricity = ecc_h**2 + ecc_k**2
+        eccentricity  = ecc_h ** 2 + ecc_k ** 2
         arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
         P_orb = params["P_orb"]
 
-        ar_lat = jnp.array([params["spot_lat"]])
-        ar_long = jnp.array([params["spot_long"]])
-        ar_size = jnp.array([params["spot_size"]])
+        ar_lat  = jnp.array([spot_lat])
+        ar_long = jnp.array([spot_long])
+        ar_size = jnp.array([spot_size])
 
         dynamic_phases_rot = (model_dict["times"] / P_rot * 360.0) % 360.0
 
@@ -638,7 +658,7 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
         )(ar_cart))(dynamic_phases_rot)
 
         flux_active = jnp.stack([
-            jnp.broadcast_to(params["spot_flux"], (1,)),
+            jnp.broadcast_to(spot_flux, (1,)),
         ])
 
         lc, _, _ = _compute_all_phases(
