@@ -68,9 +68,9 @@ RESULTS_PATH    = SCALING_OUT_DIR / "results.json"
 # Every algorithm receives the same LDE budget at each level.  The back-
 # computation translates this into the algorithm's native effort parameter.
 
-LOGP_BUDGETS = [10_000, 25_000, 50_000, 100_000, 200_000, 500_000]
+LOGP_BUDGETS = [10_000, 25_000, 50_000, 100_000, 200_000, 500_000, 1_000_000]
 
-NUM_TRIALS = 5  # seeds 0 .. NUM_TRIALS-1
+NUM_TRIALS = 10  # seeds 0 .. NUM_TRIALS-1
 
 # ---------------------------------------------------------------------------
 # Pilot estimates for unknowns in the cost models
