@@ -62,12 +62,15 @@ def _unconstrained_prior_std(d) -> float:
     raise TypeError(f"No analytical unconstrained std for {type(d).__name__}")
 
 
-# Roberts, Gelman & Gilks (1997): σ_proposal = 2.38/√d × σ_min, where σ_min is the
-# smallest prior std in unconstrained space across all parameters.
-_UNC_PRIOR_STDS = {name: _unconstrained_prior_std(d) for name, d in PRIOR_DISTRIBUTIONS.items()}
-_SIGMA_MIN = min(_UNC_PRIOR_STDS.values())
-# STEP_SIZE = 2.38 / np.sqrt(NDIM) *_SIGMA_MIN
-STEP_SIZE = _SIGMA_MIN
+# Roberts, Gelman & Gilks (1997): σ_proposal = 2.38/√d × σ, where σ is the
+# prior std in unconstrained space for each parameter.
+_UNC_PRIOR_STDS_ARRAY = jnp.array([
+    _unconstrained_prior_std(PRIOR_DISTRIBUTIONS[name]) for name in PARAM_NAMES
+])
+_SORTED_NAMES = sorted(PRIOR_DISTRIBUTIONS.keys())
+PROPOSAL_SCALE = (2.38 / np.sqrt(NDIM)) * jnp.array([
+    _unconstrained_prior_std(PRIOR_DISTRIBUTIONS[name]) for name in _SORTED_NAMES
+])
 
 DIAG_STRIDE = 100
 PLOT_STRIDE = 1000
@@ -225,7 +228,7 @@ def main(seed: int = 0, save_outputs: bool = True):
 
     def _proposal_generator(rng_key, position):
         flat, _ = jax.flatten_util.ravel_pytree(position)
-        noise = STEP_SIZE * jax.random.normal(rng_key, shape=flat.shape)
+        noise = PROPOSAL_SCALE * jax.random.normal(rng_key, shape=flat.shape)
         return _unravel_fn(flat + noise)
 
     kernel = blackjax.rmh(
@@ -338,7 +341,7 @@ def main(seed: int = 0, save_outputs: bool = True):
         "num_warmup": NUM_BURNIN,
         "num_samples": NUM_SAMPLES,
         "ndim": NDIM,
-        "step_size": float(STEP_SIZE),
+        "step_size": {name: float(PROPOSAL_SCALE[iname]) for iname, name in enumerate(PARAM_NAMES)},
         "mean_acceptance_rate": float(acceptance),
         "total_log_density_evals": int(total_log_density_evals),
         "wall_time_s": float(wall_time_s),
