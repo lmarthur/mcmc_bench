@@ -527,20 +527,22 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print(f"Saved trace plot to {trace_path}")
 
     # 2. Corner plot — all parameters with truth / MAP / mean reference lines
-    n_params = len(PARAM_NAMES)
+    param_vars = cold_samples.var(axis=0)
+    plot_params = [name for i, name in enumerate(PARAM_NAMES) if param_vars[i] > 0]
+    n_params = len(plot_params)
     az.rcParams["plot.max_subplots"] = n_params ** 2
 
     axes = az.plot_pair(
         idata,
-        var_names=PARAM_NAMES,
+        var_names=plot_params,
         kind="kde",
         marginals=True,
         figsize=(24, 24),
     )
 
     # Reference values for each parameter
-    truth_vals = [float(GROUND_TRUTH[p]) for p in PARAM_NAMES]
-    mean_vals  = [float(posterior_means[i]) for i in range(n_params)]
+    truth_vals = [float(GROUND_TRUTH[p]) for p in plot_params]
+    mean_vals  = [float(posterior_means[PARAM_NAMES.index(p)]) for p in plot_params]
 
     # Consistent colors
     color_truth = "steelblue"

@@ -34,12 +34,18 @@ from astropy.constants import G
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 # ---------------------------------------------------------------------------
+# Host star physical constants (M1V)
+# ---------------------------------------------------------------------------
+TRUE_M_STAR_MSUN = 0.50          # M_sun
+TRUE_R_STAR_RSUN = 0.50          # R_sun
+
+# ---------------------------------------------------------------------------
 # Planet transit parameters (jaxoplanet)
 # ---------------------------------------------------------------------------
 TRUE_PLANET_RADIUS = 0.1                                                 #stellar-radii
 TRUE_P_ORB         = 1.0
-A_METERS           = ( (G.value * (1.0 * u.M_sun).to(u.kg).value * (TRUE_P_ORB * 24 * 3600)**2)/(4 * jnp.pi**2) )**(1/3)
-TRUE_SEMI_MAJOR    = A_METERS / (1.0 * u.R_sun).to(u.m).value
+A_METERS           = ( (G.value * (TRUE_M_STAR_MSUN * u.M_sun).to(u.kg).value * (TRUE_P_ORB * 24 * 3600)**2)/(4 * jnp.pi**2) )**(1/3)
+TRUE_SEMI_MAJOR    = A_METERS / (TRUE_R_STAR_RSUN * (1.0 * u.R_sun).to(u.m).value)
 TRUE_INCLINATION   = jnp.deg2rad(90.0)       
 TRUE_ECCENTRICITY  = 0.0        
 TRUE_ARG_PERIAPSIS = 0.0        
@@ -96,16 +102,11 @@ SIGMA_NOISE = 100e-6     # ~100 ppm
 # ---------------------------------------------------------------------------
 # Physical constants for M1V host star (used to set physically motivated priors)
 # ---------------------------------------------------------------------------
-# T_eff ~ 3700 K for M1V (Rajpurohit et al. 2013, A&A 556, A15)
+# T_eff ~ 3700 K for M1V
 T_STAR = 3700.0                  # K — photospheric temperature
 
-# Stellar radius: Boyajian et al. 2012 (ApJ 757, 112), Table 4 for M1V
-TRUE_R_STAR_RSUN = 0.50          # R_sun
-R_STAR_SIGMA_FRAC = 0.05         # fractional uncertainty from spectroscopy (Mann et al. 2015)
-
-# IAU 2015 nominal planetary radii in R_sun
-R_EARTH_RSUN = 0.009157          # 1 R_earth / 1 R_sun
-R_JUP_RSUN   = 0.10273           # 1 R_jup  / 1 R_sun
+# TRUE_M_STAR_MSUN and TRUE_R_STAR_RSUN are defined at the top of the file.
+R_STAR_SIGMA_FRAC = 0.05         # fractional uncertainty from spectroscopy
 
 # ---------------------------------------------------------------------------
 # Simulated "prior measurements" — realistic measurement noise applied to true
@@ -114,7 +115,6 @@ R_JUP_RSUN   = 0.10273           # 1 R_jup  / 1 R_sun
 # ---------------------------------------------------------------------------
 _meas_rng = np.random.default_rng(seed=7830)  # fixed seed for reproducibility
 
-# Rotation period: McQuillan et al. 2014 (ApJS 211): photometric monitoring of
 # a P ~ 0.5 day star achieves ~0.2% precision → σ ~ 0.001 days (~90 s).
 P_ROT_SIGMA = 0.001              # days
 P_ROT_MEASURED = float(TRUE_P_ROT + _meas_rng.normal(0.0, P_ROT_SIGMA))
@@ -155,18 +155,10 @@ FLUX_MIN, FLUX_MAX = 0.1, 2.0
 PLANET_RADIUS_MIN, PLANET_RADIUS_MAX = 0.001, 0.3  # Rp/Rs
 SEMI_MAJOR_MIN, SEMI_MAJOR_MAX = 0.0, 10.0         # a/R* (semi-major axis in stellar radii)
 INCLINATION_MIN, INCLINATION_MAX = 80.0, 100.0     # inclination [degrees]
-ECC_H_SCALE = 0.3   # √e·cos(ω) prior scale
-ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 
 # ---------------------------------------------------------------------------
 # Prior distributions — single source of truth for all samplers.
 # ---------------------------------------------------------------------------
-
-# Planet radius bounds: derived from M1V stellar radius measurement.
-# Min = 0.5 R_earth (approximate detection floor for 100 ppm noise);
-# Max = 1 R_jup (planet-to-brown-dwarf transition boundary).
-_PLANET_RADIUS_MIN = (0.5 * R_EARTH_RSUN) / R_STAR_MEASURED_RSUN
-_PLANET_RADIUS_MAX = R_JUP_RSUN / R_STAR_MEASURED_RSUN
 
 # Wide (physically motivated) priors
 PRIOR_DISTRIBUTIONS = {
@@ -175,7 +167,7 @@ PRIOR_DISTRIBUTIONS = {
     # on the sphere — corrects for the cos(lat) Jacobian factor so that equal
     # prior probability is assigned to equal solid angles.
     "sin_lat":       dist.Uniform(-1.0, 1.0),
-    "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
+    "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX), # TODO: Consider making this a circular/closed prior
     # log-uniform: spot size is a scale parameter (Jeffreys prior);
     # range spans detection floor (~1°) to giant polar spots (~45°).
     "spot_size":     dist.LogUniform(1.0, 45.0),
@@ -183,29 +175,22 @@ PRIOR_DISTRIBUTIONS = {
     # --- Spot flux via temperature deviation ---
     # delta_T = T_active - T_star; Normal(0, 300 K) spans spot (negative)
     # and facula (positive) regimes, with most probability near featureless
-    # photosphere (delta_T = 0). M dwarf spot contrasts are 100–800 K
-    # (Berdyugina 2005 review); faculae are 50–300 K above photosphere.
-    # spot_flux is derived as ((T_STAR + delta_T) / T_STAR)^4 (Stefan-Boltzmann).
-    # Note: strictly, a passband-specific Planck ratio is more accurate than T^4
-    # at optical wavelengths for cool stars, but the approximation error (~15%)
-    # is acceptable for this benchmarking study.
+    # photosphere (delta_T = 0).
     "delta_T":       dist.Normal(0.0, 300.0),
 
     # --- Stellar rotation ---
     # Prior centered on independently measured rotation period.
-    # McQuillan et al. 2014 (ApJS 211): σ ~ 0.2% for P~0.5 day star.
+    # σ ~ 0.2% for P~0.5 day star.
     "p_rot":         dist.Normal(P_ROT_MEASURED, P_ROT_SIGMA),
 
     # --- Planet geometry ---
-    # planet_radius in R_p/R_star: log-uniform (scale parameter);
-    # bounds derived from M1V stellar radius measurement.
-    "planet_radius": dist.LogUniform(_PLANET_RADIUS_MIN, _PLANET_RADIUS_MAX),
+    # planet_radius in R_p/R_star: log-uniform (scale parameter).
+    # [0.01, 0.3]: lower bound ~ detection floor at 100 ppm; upper bound generous.
+    "planet_radius": dist.LogUniform(0.01, 0.3),
 
     # semimajor_axis in a/R_star: log-uniform (scale parameter).
-    # Lower bound: Roche limit for rocky planet (~2.4 R_star for M1V;
-    #   a_Roche = 2.44*(rho_planet/rho_star)^(1/3), rho_M1V ~ 5640 kg/m³,
-    #   rho_rocky ~ 5500 kg/m³ → a_Roche ~ 2.42); use 2.5 with safety margin.
-    # Upper bound: detectability limit (P ~ 30 days for 1 M_sun star → a ~ 50);
+    # Lower bound: Roche limit for rocky planet.
+    # Upper bound: detectability limit (~30-day orbit for M1V → a ~ 50).
     # LogUniform prior on a encodes geometric transit selection bias:
     # p(a) ∝ 1/a matches transit probability P_transit ∝ R_star/a.
     "semimajor_axis": dist.LogUniform(2.5, 50.0),
@@ -218,7 +203,7 @@ PRIOR_DISTRIBUTIONS = {
     # ecc_h = √e · cos(ω),  ecc_k = √e · sin(ω).
     # Independent Normal(0, σ) components → e ~ Rayleigh(σ) prior.
     # P_orb = 1 day → tidal circularization timescale << stellar age for M
-    # dwarfs; eccentricity is expected to be near zero (Mazeh et al. 2008).
+    # dwarfs; eccentricity is expected to be near zero.
     # σ = 0.05 → 90th percentile e ~ 0.11.
     "ecc_h":         dist.Normal(0.0, 0.05),
     "ecc_k":         dist.Normal(0.0, 0.05),
@@ -229,15 +214,8 @@ PRIOR_DISTRIBUTIONS = {
     # σ_P ≈ σ_tc / (N-1) ~ 3s/4 ~ 1e-5 days.
     "P_orb":         dist.Normal(P_ORB_MEASURED, P_ORB_SIGMA),
 
-    # --- Limb darkening (Kipping 2013 parameterization) ---
+    # --- Limb darkening (Kipping parameterization) ---
     # u1 = 2√q1·q2,  u2 = √q1·(1 - 2q2).
-    # Uniform(0,1) in (q1,q2) is the CORRECT uninformative prior:
-    # it covers the full physical triangle in (u1,u2) space uniformly
-    # (Kipping 2013, MNRAS 435, 2152).
-    # For a tighter prior from stellar atmosphere models (PHOENIX, Claret &
-    # Bloemen 2011), replace with TruncatedNormal centered on model predictions:
-    #   dist.TruncatedNormal(loc=q1_pred, scale=0.05, low=0.0, high=1.0)
-    # M1V @ 550 nm: u1 ~ 0.5, u2 ~ 0.2  → q1 ~ 0.49, q2 ~ 0.36.
     "ldc_q1":        dist.Uniform(0.0, 1.0),
     "ldc_q2":        dist.Uniform(0.0, 1.0),
 }
@@ -822,7 +800,7 @@ GROUND_TRUTH = {
     "ecc_k":         float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
     # Use true orbital period (prior centered on measured, truth is TRUE_P_ORB)
     "P_orb":         float(TRUE_P_ORB),
-    # Kipping 2013 q parameters: q1 = (u1+u2)², q2 = u1/(2(u1+u2))
+    # Kipping q parameters: q1 = (u1+u2)², q2 = u1/(2(u1+u2))
     "ldc_q1":        float((TRUE_LDC_U1 + TRUE_LDC_U2) ** 2),
     "ldc_q2":        float(TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2))),
 }

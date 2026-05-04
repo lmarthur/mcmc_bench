@@ -78,7 +78,7 @@ _DIAG_PARAMS = [
 ]
 
 
-def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_dir=None):
+def run_step_diagnostics(raw, constrain_fn, save_lcs=False, output_dir=None):
     """
     Iterate through the full sample trace (including burn-in) and print a
     per-step table of walker-mean parameters and reduced chi-squared.
@@ -90,6 +90,7 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     ----------
     raw : ndarray, shape (NUM_STEPS, NUM_WALKERS, NDIM)
         Raw unconstrained samples straight from trace.samples.coordinates.
+        The last axis is ordered as PARAM_NAMES.
     """
     from io import BytesIO
     from PIL import Image
@@ -109,8 +110,12 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
     frames = []
 
     for step_idx in range(0, n_steps, DIAG_STRIDE):
-        mean_unc = jnp.array(raw[step_idx].mean(axis=0))
-        c = constrain_fn(unravel_fn(mean_unc))
+        # Build the unconstrained dict directly from PARAM_NAMES ordering.
+        # Avoids jax.flatten_util.ravel_pytree which sorts dict keys alphabetically,
+        # mismatching the PARAM_NAMES insertion order used to build all_unc_arr.
+        mean_unc_flat = raw[step_idx].mean(axis=0)
+        mean_unc_dict = {name: jnp.array(mean_unc_flat[i]) for i, name in enumerate(PARAM_NAMES)}
+        c = constrain_fn(mean_unc_dict)
 
         chi2 = compute_chi2(c)
         param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
@@ -258,7 +263,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     all_unc_arr = np.stack(
         [np.array(all_unc_steps[name]) for name in PARAM_NAMES], axis=-1
     ).transpose(1, 0, 2)
-    run_step_diagnostics(all_unc_arr, constrain_fn, _unravel_fn, save_lcs=save_outputs,
+    run_step_diagnostics(all_unc_arr, constrain_fn, save_lcs=save_outputs,
                          output_dir=RWMH_OUTPUT_DIR)
     
     # --- Extract MAP sample ---
