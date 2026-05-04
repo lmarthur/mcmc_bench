@@ -527,8 +527,8 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print(f"Saved trace plot to {trace_path}")
 
     # 2. Corner plot — all parameters with truth / MAP / mean reference lines
-    param_vars = cold_samples.var(axis=0)
-    plot_params = [name for i, name in enumerate(PARAM_NAMES) if param_vars[i] > 0]
+    plot_params = [name for i, name in enumerate(PARAM_NAMES)
+                   if np.ptp(cold_samples[:, i]) > 1e-8]
     n_params = len(plot_params)
     az.rcParams["plot.max_subplots"] = n_params ** 2
 
