@@ -74,7 +74,7 @@ PLOT_STRIDE = 1000
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "inclination",
 ]
 
 

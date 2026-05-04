@@ -40,6 +40,7 @@ from model import (
     LC_TRUE,
     TIMES,
     PRIOR_DISTRIBUTIONS,
+    T_STAR,
 )
 
 SMC_OUTPUT_DIR = OUTPUT_DIR / "smc"
@@ -66,8 +67,29 @@ PLOT_STRIDE = 10      # save LC snapshots every N SMC iterations
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "inclination",
 ]
+
+
+def _constrained_prior_std(d) -> float:
+    """Return the std of prior d in constrained (direct parameter) space.
+    Used to set per-dimension proposal scales. Handles all distribution
+    types used in PRIOR_DISTRIBUTIONS."""
+    from numpyro.distributions import Uniform, Normal, LogNormal, LogUniform
+    if isinstance(d, Uniform):
+        return float((d.high - d.low) / (2 * jnp.sqrt(3.0)))
+    elif isinstance(d, Normal):
+        return float(d.scale)
+    elif isinstance(d, LogNormal):
+        return float(jnp.exp(d.loc + 0.5 * d.scale**2) *
+                     jnp.sqrt(jnp.exp(d.scale**2) - 1.0))
+    elif isinstance(d, LogUniform):
+        lo, hi = float(d.low), float(d.high)
+        log_ratio = float(jnp.log(hi / lo))
+        ex  = (hi - lo) / log_ratio
+        ex2 = (hi**2 - lo**2) / (2 * log_ratio)
+        return float(jnp.sqrt(max(ex2 - ex**2, 0.0)))
+    raise TypeError(f"No constrained std defined for {type(d).__name__}")
 
 
 def sample_prior_particles(key, num_particles):
@@ -82,7 +104,9 @@ def sample_prior_particles(key, num_particles):
 def particle_to_constrained_dict(x):
     """Convert a single flat particle to a named dict including derived quantities."""
     c = {name: float(x[i]) for i, name in enumerate(PARAM_NAMES)}
-    c["semimajor_axis"] = float(np.abs(c["impact_param"] / np.cos(np.deg2rad(c["inclination"]))))
+    c["spot_lat"]      = float(np.rad2deg(np.arcsin(c["sin_lat"])))
+    c["spot_flux"]     = float(((T_STAR + c["delta_T"]) / T_STAR) ** 4)
+    c["inclination"]   = float(np.rad2deg(np.arccos(c["impact_param"] / c["semimajor_axis"])))
     c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
     c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
@@ -135,7 +159,7 @@ def main(seed: int = 0, save_outputs: bool = True):
         return kernel.step(rng_key, state)
 
     prior_stds = jnp.array([
-        float(jnp.sqrt(PRIOR_DISTRIBUTIONS[name].variance))
+        _constrained_prior_std(PRIOR_DISTRIBUTIONS[name])
         for name in PARAM_NAMES
     ])
 
@@ -308,15 +332,19 @@ def main(seed: int = 0, save_outputs: bool = True):
     rng = np.random.default_rng(seed + 1)
     indices   = rng.choice(NUM_PARTICLES, size=NUM_PARTICLES, replace=True, p=weights)
     resampled = particles[indices]
-    impact_param_r = resampled[:, PARAM_NAMES.index("impact_param")]
-    inclination_r  = resampled[:, PARAM_NAMES.index("inclination")]
-    ecc_h_r  = resampled[:, PARAM_NAMES.index("ecc_h")]
-    ecc_k_r  = resampled[:, PARAM_NAMES.index("ecc_k")]
-    ldc_q1_r = resampled[:, PARAM_NAMES.index("ldc_q1")]
-    ldc_q2_r = resampled[:, PARAM_NAMES.index("ldc_q2")]
+    sin_lat_r   = resampled[:, PARAM_NAMES.index("sin_lat")]
+    delta_T_r   = resampled[:, PARAM_NAMES.index("delta_T")]
+    semimajor_r = resampled[:, PARAM_NAMES.index("semimajor_axis")]
+    impact_r    = resampled[:, PARAM_NAMES.index("impact_param")]
+    ecc_h_r     = resampled[:, PARAM_NAMES.index("ecc_h")]
+    ecc_k_r     = resampled[:, PARAM_NAMES.index("ecc_k")]
+    ldc_q1_r    = resampled[:, PARAM_NAMES.index("ldc_q1")]
+    ldc_q2_r    = resampled[:, PARAM_NAMES.index("ldc_q2")]
     constrained_samples = {PARAM_NAMES[i]: resampled[:, i] for i in range(NDIM)}
-    constrained_samples["semimajor_axis"] = np.abs(impact_param_r / np.cos(np.deg2rad(inclination_r)))
-    constrained_samples["eccentricity"]  = ecc_h_r ** 2 + ecc_k_r ** 2
+    constrained_samples["spot_lat"]     = np.rad2deg(np.arcsin(sin_lat_r))
+    constrained_samples["spot_flux"]    = ((T_STAR + delta_T_r) / T_STAR) ** 4
+    constrained_samples["inclination"]  = np.rad2deg(np.arccos(impact_r / semimajor_r))
+    constrained_samples["eccentricity"]  = ecc_h_r**2 + ecc_k_r**2
     constrained_samples["arg_periapsis"] = np.arctan2(ecc_k_r, ecc_h_r)
     constrained_samples["ldc_u1"] = 2 * np.sqrt(ldc_q1_r) * ldc_q2_r
     constrained_samples["ldc_u2"] = np.sqrt(ldc_q1_r) * (1 - 2 * ldc_q2_r)

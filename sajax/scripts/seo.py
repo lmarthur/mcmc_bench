@@ -40,6 +40,7 @@ from model import (
     OBS_LIGHT_CURVE,
     LC_TRUE,
     PRIOR_DISTRIBUTIONS,
+    T_STAR,
 )
 
 SEO_OUTPUT_DIR = OUTPUT_DIR / "seo"
@@ -49,8 +50,29 @@ PLOT_STRIDE = 1000
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "inclination",
 ]
+
+
+def _constrained_prior_std(d) -> float:
+    """Return the std of prior d in constrained (direct parameter) space.
+    Used to set per-dimension proposal scales. Handles all distribution
+    types used in PRIOR_DISTRIBUTIONS."""
+    from numpyro.distributions import Uniform, Normal, LogNormal, LogUniform
+    if isinstance(d, Uniform):
+        return float((d.high - d.low) / (2 * jnp.sqrt(3.0)))
+    elif isinstance(d, Normal):
+        return float(d.scale)
+    elif isinstance(d, LogNormal):
+        return float(jnp.exp(d.loc + 0.5 * d.scale**2) *
+                     jnp.sqrt(jnp.exp(d.scale**2) - 1.0))
+    elif isinstance(d, LogUniform):
+        lo, hi = float(d.low), float(d.high)
+        log_ratio = float(jnp.log(hi / lo))
+        ex  = (hi - lo) / log_ratio
+        ex2 = (hi**2 - lo**2) / (2 * log_ratio)
+        return float(jnp.sqrt(max(ex2 - ex**2, 0.0)))
+    raise TypeError(f"No constrained std defined for {type(d).__name__}")
 
 # ===========================================================================
 # Tunable parameters
@@ -144,14 +166,16 @@ def mala_kernel_generator(log_p, step_size):
     return kernel
 
 def _to_physical_dict(param_vector):
-    """Convert a flat parameter vector (indexed by PARAM_NAMES) to a dict
-    including derived physical quantities needed by _call_sajax / compute_lc_from_constrained."""
+    """Convert a flat parameter vector (indexed by PARAM_NAMES) to a constrained dict.
+    Applies all analytical derivations matching make_constrain_fn in model.py."""
     c = {name: float(param_vector[i]) for i, name in enumerate(PARAM_NAMES)}
-    c["semimajor_axis"] = float(np.abs(c["impact_param"] / np.cos(np.deg2rad(c["inclination"]))))
-    c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
+    c["spot_lat"]      = float(np.rad2deg(np.arcsin(c["sin_lat"])))
+    c["spot_flux"]     = float(((T_STAR + c["delta_T"]) / T_STAR) ** 4)
+    c["inclination"]   = float(np.rad2deg(np.arccos(c["impact_param"] / c["semimajor_axis"])))
+    c["eccentricity"]  = c["ecc_h"]**2 + c["ecc_k"]**2
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
-    c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
-    c["ldc_u2"] = float(np.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"]))
+    c["ldc_u1"] = 2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"]
+    c["ldc_u2"] = np.sqrt(c["ldc_q1"]) * (1 - 2 * c["ldc_q2"])
     return c
 
 def run_step_diagnostics(raw, save_lcs=False, output_dir=None):
@@ -271,9 +295,7 @@ def main(seed: int = 0, save_outputs: bool = True):
         # Per-dimension RWMH proposal scale: (2.38/√d) · prior_std_i.
         # The per-chain α multiplies this vector to form the proposal sigma.
         prior_stds = jnp.array([
-            float(jnp.sqrt(PRIOR_DISTRIBUTIONS[
-                name.lower() if name.startswith("LDC") else name
-            ].variance))
+            _constrained_prior_std(PRIOR_DISTRIBUTIONS[name])
             for name in PARAM_NAMES
         ])
         proposal_scale = (2.38 / jnp.sqrt(ndim)) * prior_stds
@@ -395,16 +417,19 @@ def main(seed: int = 0, save_outputs: bool = True):
     # --- Build constrained dicts for all cold-chain samples ---
     # This is the "constrained_samples" dict: {name: array of shape (NUM_SAMPLES,)}
     constrained_samples = {name: cold_samples[:, i] for i, name in enumerate(PARAM_NAMES)}
-    # Add derived quantities so plot_bestfit_lightcurve / compute_lc_from_constrained can use them
-    impact_param_arr = cold_samples[:, PARAM_NAMES.index("impact_param")]
-    inclination_arr  = cold_samples[:, PARAM_NAMES.index("inclination")]
-    constrained_samples["semimajor_axis"] = np.abs(impact_param_arr / np.cos(np.deg2rad(inclination_arr)))
-    ecc_h = cold_samples[:, PARAM_NAMES.index("ecc_h")]
-    ecc_k = cold_samples[:, PARAM_NAMES.index("ecc_k")]
-    constrained_samples["eccentricity"]  = ecc_h ** 2 + ecc_k ** 2
+    sin_lat_arr    = cold_samples[:, PARAM_NAMES.index("sin_lat")]
+    delta_T_arr    = cold_samples[:, PARAM_NAMES.index("delta_T")]
+    semimajor_arr  = cold_samples[:, PARAM_NAMES.index("semimajor_axis")]
+    impact_arr     = cold_samples[:, PARAM_NAMES.index("impact_param")]
+    ecc_h          = cold_samples[:, PARAM_NAMES.index("ecc_h")]
+    ecc_k          = cold_samples[:, PARAM_NAMES.index("ecc_k")]
+    q1             = cold_samples[:, PARAM_NAMES.index("ldc_q1")]
+    q2             = cold_samples[:, PARAM_NAMES.index("ldc_q2")]
+    constrained_samples["spot_lat"]     = np.rad2deg(np.arcsin(sin_lat_arr))
+    constrained_samples["spot_flux"]    = ((T_STAR + delta_T_arr) / T_STAR) ** 4
+    constrained_samples["inclination"]  = np.rad2deg(np.arccos(impact_arr / semimajor_arr))
+    constrained_samples["eccentricity"]  = ecc_h**2 + ecc_k**2
     constrained_samples["arg_periapsis"] = np.arctan2(ecc_k, ecc_h)
-    q1 = cold_samples[:, PARAM_NAMES.index("ldc_q1")]
-    q2 = cold_samples[:, PARAM_NAMES.index("ldc_q2")]
     constrained_samples["ldc_u1"] = 2 * np.sqrt(q1) * q2
     constrained_samples["ldc_u2"] = np.sqrt(q1) * (1 - 2 * q2)
 

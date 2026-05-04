@@ -39,6 +39,7 @@ from model import (
     LC_TRUE,
     TIMES,
     PRIOR_DISTRIBUTIONS,
+    T_STAR,
 )
 
 tfpd = tfp.distributions
@@ -57,7 +58,7 @@ PLOT_STRIDE = 200
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "inclination",
 ]
 
 
@@ -112,9 +113,13 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
     
     for idx in range(0, n_dead, DIAG_STRIDE):
         constrained = {name: np.array(samples_dict[name])[idx] for name in PARAM_NAMES}
-
-        constrained["semimajor_axis"] = np.abs(constrained["impact_param"] / np.cos(np.deg2rad(constrained["inclination"])))
-        constrained["eccentricity"] = constrained["ecc_h"]**2 + constrained["ecc_k"]**2
+        # Derive physical quantities from new primary parameterization
+        constrained["spot_lat"]      = float(np.rad2deg(np.arcsin(constrained["sin_lat"])))
+        constrained["spot_flux"]     = float(((T_STAR + constrained["delta_T"]) / T_STAR) ** 4)
+        constrained["inclination"]   = float(np.rad2deg(np.arccos(
+            constrained["impact_param"] / constrained["semimajor_axis"]
+        )))
+        constrained["eccentricity"]  = constrained["ecc_h"]**2 + constrained["ecc_k"]**2
         constrained["arg_periapsis"] = np.arctan2(constrained["ecc_k"], constrained["ecc_h"])
         constrained["ldc_u1"] = 2 * np.sqrt(constrained["ldc_q1"]) * constrained["ldc_q2"]
         constrained["ldc_u2"] = np.sqrt(constrained["ldc_q1"]) * (1 - 2 * constrained["ldc_q2"])
@@ -218,15 +223,19 @@ def main(seed=0, save_outputs=True):
     )
 
     # --- Build constrained samples with derived quantities ---
-    ecc_h = np.array(uniform_samples["ecc_h"])
-    ecc_k = np.array(uniform_samples["ecc_k"])
-    ldc_q1 = np.array(uniform_samples["ldc_q1"])
-    ldc_q2 = np.array(uniform_samples["ldc_q2"])
-    impact_param = np.array(uniform_samples["impact_param"])
-    inclination = np.array(uniform_samples["inclination"])
+    sin_lat_arr   = np.array(uniform_samples["sin_lat"])
+    delta_T_arr   = np.array(uniform_samples["delta_T"])
+    semimajor_arr = np.array(uniform_samples["semimajor_axis"])
+    impact_arr    = np.array(uniform_samples["impact_param"])
+    ecc_h         = np.array(uniform_samples["ecc_h"])
+    ecc_k         = np.array(uniform_samples["ecc_k"])
+    ldc_q1        = np.array(uniform_samples["ldc_q1"])
+    ldc_q2        = np.array(uniform_samples["ldc_q2"])
     constrained_with_derived = {
         **{name: np.array(uniform_samples[name]) for name in PARAM_NAMES},
-        "semimajor_axis": np.abs(impact_param / np.cos(np.deg2rad(inclination))),
+        "spot_lat":     np.rad2deg(np.arcsin(sin_lat_arr)),
+        "spot_flux":    ((T_STAR + delta_T_arr) / T_STAR) ** 4,
+        "inclination":  np.rad2deg(np.arccos(impact_arr / semimajor_arr)),
         "eccentricity": ecc_h**2 + ecc_k**2,
         "arg_periapsis": np.arctan2(ecc_k, ecc_h),
         "ldc_u1": 2 * np.sqrt(ldc_q1) * ldc_q2,
