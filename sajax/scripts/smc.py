@@ -82,6 +82,7 @@ def sample_prior_particles(key, num_particles):
 def particle_to_constrained_dict(x):
     """Convert a single flat particle to a named dict including derived quantities."""
     c = {name: float(x[i]) for i, name in enumerate(PARAM_NAMES)}
+    c["spot_lat"] = float(np.rad2deg(np.arcsin(c["sin_lat"])))
     c["inclination"] = float(np.rad2deg(np.arccos(c["impact_param"] / c["semimajor_axis"])))
     c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
@@ -315,6 +316,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     ldc_q1_r = resampled[:, PARAM_NAMES.index("ldc_q1")]
     ldc_q2_r = resampled[:, PARAM_NAMES.index("ldc_q2")]
     constrained_samples = {PARAM_NAMES[i]: resampled[:, i] for i in range(NDIM)}
+    constrained_samples["spot_lat"] = np.rad2deg(np.arcsin(resampled[:, PARAM_NAMES.index("sin_lat")]))
     constrained_samples["inclination"] = np.rad2deg(np.arccos(impact_param_r / semimajor_axis_r))
     constrained_samples["eccentricity"]  = ecc_h_r ** 2 + ecc_k_r ** 2
     constrained_samples["arg_periapsis"] = np.arctan2(ecc_k_r, ecc_h_r)

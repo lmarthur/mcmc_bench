@@ -147,6 +147,7 @@ def _to_physical_dict(param_vector):
     """Convert a flat parameter vector (indexed by PARAM_NAMES) to a dict
     including derived physical quantities needed by _call_sajax / compute_lc_from_constrained."""
     c = {name: float(param_vector[i]) for i, name in enumerate(PARAM_NAMES)}
+    c["spot_lat"] = float(np.rad2deg(np.arcsin(c["sin_lat"])))
     c["inclination"] = float(np.rad2deg(np.arccos(c["impact_param"] / c["semimajor_axis"])))
     c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
@@ -396,6 +397,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     # This is the "constrained_samples" dict: {name: array of shape (NUM_SAMPLES,)}
     constrained_samples = {name: cold_samples[:, i] for i, name in enumerate(PARAM_NAMES)}
     # Add derived quantities so plot_bestfit_lightcurve / compute_lc_from_constrained can use them
+    constrained_samples["spot_lat"] = np.rad2deg(np.arcsin(cold_samples[:, PARAM_NAMES.index("sin_lat")]))
     impact_param_arr   = cold_samples[:, PARAM_NAMES.index("impact_param")]
     semimajor_axis_arr = cold_samples[:, PARAM_NAMES.index("semimajor_axis")]
     constrained_samples["inclination"] = np.rad2deg(np.arccos(impact_param_arr / semimajor_axis_arr))

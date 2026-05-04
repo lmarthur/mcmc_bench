@@ -122,9 +122,8 @@ ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 # ---------------------------------------------------------------------------
 #Narrow
 PRIOR_DISTRIBUTIONS = {
-    "spot_lat":      dist.Uniform(4.0, 6.0),
-    # "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
-    "spot_long":     dist.Uniform(4.0, 6.0),
+    "sin_lat":       dist.Uniform(-1.0, 1.0),
+    "spot_long":     dist.Uniform(0, 360),
     # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
     "spot_size":     dist.LogUniform(1.0, 45.0),
     # "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
@@ -317,7 +316,8 @@ def sajax_model(y_obs: jnp.ndarray = jnp.array(OBS_LIGHT_CURVE), model_dict: dic
     NumPyro model for the spot + planet posterior.
     Uses pre-built STATIC_MODEL for JIT-compatibility.
     """
-    spot_lat = numpyro.sample("spot_lat", PRIOR_DISTRIBUTIONS["spot_lat"])
+    sin_lat  = numpyro.sample("sin_lat",  PRIOR_DISTRIBUTIONS["sin_lat"])
+    spot_lat = numpyro.deterministic("spot_lat", jnp.rad2deg(jnp.arcsin(sin_lat)))
     spot_long = numpyro.sample("spot_long", PRIOR_DISTRIBUTIONS["spot_long"])
     spot_size = numpyro.sample("spot_size", PRIOR_DISTRIBUTIONS["spot_size"])
     spot_flux = numpyro.sample("spot_flux", PRIOR_DISTRIBUTIONS["spot_flux"])
@@ -443,6 +443,7 @@ def make_constrain_fn():
 
     def constrain_fn(z):
         c = {name: transforms[name](z[name]) for name in transforms}
+        c["spot_lat"] = jnp.rad2deg(jnp.arcsin(c["sin_lat"]))
         c["inclination"] = jnp.rad2deg(jnp.arccos(c["impact_param"] / c["semimajor_axis"]))
         c["eccentricity"]  = c["ecc_h"]**2 + c["ecc_k"]**2
         c["arg_periapsis"] = jnp.arctan2(c["ecc_k"], c["ecc_h"])
@@ -489,6 +490,8 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
     y_obs_arr = jnp.array(y_obs)
 
     def log_likelihood(params):
+        sin_lat   = params["sin_lat"]
+        spot_lat  = jnp.rad2deg(jnp.arcsin(sin_lat))
         P_rot = params["p_rot"]
         ldc_q1 = params["ldc_q1"]
         ldc_q2 = params["ldc_q2"]
@@ -504,7 +507,7 @@ def make_log_likelihood(y_obs: np.ndarray = OBS_LIGHT_CURVE, model_dict: dict = 
         arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
         P_orb = params["P_orb"]
 
-        ar_lat = jnp.array([params["spot_lat"]])
+        ar_lat = jnp.array([spot_lat])
         ar_long = jnp.array([params["spot_long"]])
         ar_size = jnp.array([params["spot_size"]])
 
@@ -676,7 +679,7 @@ def compute_chi2(constrained: dict, model_dict: dict = STATIC_MODEL) -> float:
 # Ground truth dict — for sampler diagnostics
 # ---------------------------------------------------------------------------
 GROUND_TRUTH = {
-    "spot_lat": TRUE_SPOT_LAT,
+    "sin_lat":  float(jnp.sin(jnp.deg2rad(TRUE_SPOT_LAT))),
     "spot_long": TRUE_SPOT_LONG,
     "spot_size": TRUE_SPOT_SIZE,
     "spot_flux": FLUX_ACTIVE_SPOT[0],

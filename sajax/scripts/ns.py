@@ -112,6 +112,7 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
     for idx in range(0, n_dead, DIAG_STRIDE):
         constrained = {name: np.array(samples_dict[name])[idx] for name in PARAM_NAMES}
 
+        constrained["spot_lat"] = np.rad2deg(np.arcsin(constrained["sin_lat"]))
         constrained["inclination"] = np.rad2deg(np.arccos(constrained["impact_param"] / constrained["semimajor_axis"]))
         constrained["eccentricity"] = constrained["ecc_h"]**2 + constrained["ecc_k"]**2
         constrained["arg_periapsis"] = np.arctan2(constrained["ecc_k"], constrained["ecc_h"])
@@ -225,6 +226,7 @@ def main(seed=0, save_outputs=True):
     semimajor_axis_arr = np.array(uniform_samples["semimajor_axis"])
     constrained_with_derived = {
         **{name: np.array(uniform_samples[name]) for name in PARAM_NAMES},
+        "spot_lat": np.rad2deg(np.arcsin(np.array(uniform_samples["sin_lat"]))),
         "inclination": np.rad2deg(np.arccos(impact_param_arr / semimajor_axis_arr)),
         "eccentricity": ecc_h**2 + ecc_k**2,
         "arg_periapsis": np.arctan2(ecc_k, ecc_h),
