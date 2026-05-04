@@ -66,7 +66,7 @@ PLOT_STRIDE = 10      # save LC snapshots every N SMC iterations
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "P_orb",
 ]
 
 
@@ -82,7 +82,7 @@ def sample_prior_particles(key, num_particles):
 def particle_to_constrained_dict(x):
     """Convert a single flat particle to a named dict including derived quantities."""
     c = {name: float(x[i]) for i, name in enumerate(PARAM_NAMES)}
-    c["semimajor_axis"] = float(np.abs(c["impact_param"] / np.cos(np.deg2rad(c["inclination"]))))
+    c["inclination"] = float(np.rad2deg(np.arccos(c["impact_param"] / c["semimajor_axis"])))
     c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
     c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
@@ -308,14 +308,14 @@ def main(seed: int = 0, save_outputs: bool = True):
     rng = np.random.default_rng(seed + 1)
     indices   = rng.choice(NUM_PARTICLES, size=NUM_PARTICLES, replace=True, p=weights)
     resampled = particles[indices]
-    impact_param_r = resampled[:, PARAM_NAMES.index("impact_param")]
-    inclination_r  = resampled[:, PARAM_NAMES.index("inclination")]
+    impact_param_r   = resampled[:, PARAM_NAMES.index("impact_param")]
+    semimajor_axis_r = resampled[:, PARAM_NAMES.index("semimajor_axis")]
     ecc_h_r  = resampled[:, PARAM_NAMES.index("ecc_h")]
     ecc_k_r  = resampled[:, PARAM_NAMES.index("ecc_k")]
     ldc_q1_r = resampled[:, PARAM_NAMES.index("ldc_q1")]
     ldc_q2_r = resampled[:, PARAM_NAMES.index("ldc_q2")]
     constrained_samples = {PARAM_NAMES[i]: resampled[:, i] for i in range(NDIM)}
-    constrained_samples["semimajor_axis"] = np.abs(impact_param_r / np.cos(np.deg2rad(inclination_r)))
+    constrained_samples["inclination"] = np.rad2deg(np.arccos(impact_param_r / semimajor_axis_r))
     constrained_samples["eccentricity"]  = ecc_h_r ** 2 + ecc_k_r ** 2
     constrained_samples["arg_periapsis"] = np.arctan2(ecc_k_r, ecc_h_r)
     constrained_samples["ldc_u1"] = 2 * np.sqrt(ldc_q1_r) * ldc_q2_r

@@ -49,7 +49,7 @@ PLOT_STRIDE = 1000
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "P_orb",
 ]
 
 # ===========================================================================
@@ -147,7 +147,7 @@ def _to_physical_dict(param_vector):
     """Convert a flat parameter vector (indexed by PARAM_NAMES) to a dict
     including derived physical quantities needed by _call_sajax / compute_lc_from_constrained."""
     c = {name: float(param_vector[i]) for i, name in enumerate(PARAM_NAMES)}
-    c["semimajor_axis"] = float(np.abs(c["impact_param"] / np.cos(np.deg2rad(c["inclination"]))))
+    c["inclination"] = float(np.rad2deg(np.arccos(c["impact_param"] / c["semimajor_axis"])))
     c["eccentricity"]  = float(c["ecc_h"] ** 2 + c["ecc_k"] ** 2)
     c["arg_periapsis"] = float(np.arctan2(c["ecc_k"], c["ecc_h"]))
     c["ldc_u1"] = float(2 * np.sqrt(c["ldc_q1"]) * c["ldc_q2"])
@@ -396,9 +396,9 @@ def main(seed: int = 0, save_outputs: bool = True):
     # This is the "constrained_samples" dict: {name: array of shape (NUM_SAMPLES,)}
     constrained_samples = {name: cold_samples[:, i] for i, name in enumerate(PARAM_NAMES)}
     # Add derived quantities so plot_bestfit_lightcurve / compute_lc_from_constrained can use them
-    impact_param_arr = cold_samples[:, PARAM_NAMES.index("impact_param")]
-    inclination_arr  = cold_samples[:, PARAM_NAMES.index("inclination")]
-    constrained_samples["semimajor_axis"] = np.abs(impact_param_arr / np.cos(np.deg2rad(inclination_arr)))
+    impact_param_arr   = cold_samples[:, PARAM_NAMES.index("impact_param")]
+    semimajor_axis_arr = cold_samples[:, PARAM_NAMES.index("semimajor_axis")]
+    constrained_samples["inclination"] = np.rad2deg(np.arccos(impact_param_arr / semimajor_axis_arr))
     ecc_h = cold_samples[:, PARAM_NAMES.index("ecc_h")]
     ecc_k = cold_samples[:, PARAM_NAMES.index("ecc_k")]
     constrained_samples["eccentricity"]  = ecc_h ** 2 + ecc_k ** 2

@@ -41,7 +41,7 @@ from model import (
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
 NDIM = len(PARAM_NAMES)
-NUM_BURNIN  = 25000
+NUM_BURNIN  = 10000
 NUM_SAMPLES = 5000
 NUM_CHAINS  = 10
 
@@ -74,11 +74,11 @@ PLOT_STRIDE = 1000
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "P_orb",
 ]
 
 
-def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_dir=None):
+def run_step_diagnostics(raw, constrain_fn, save_lcs=False, output_dir=None):
     """
     Iterate through the full sample trace (including burn-in) and print a
     per-step table of walker-mean parameters and reduced chi-squared.
@@ -110,9 +110,28 @@ def run_step_diagnostics(raw, constrain_fn, unravel_fn, save_lcs=False, output_d
 
     for step_idx in range(0, n_steps, DIAG_STRIDE):
         mean_unc = jnp.array(raw[step_idx].mean(axis=0))
-        c = constrain_fn(unravel_fn(mean_unc))
+        c = constrain_fn({name: mean_unc[i] for i, name in enumerate(PARAM_NAMES)})
+
+        # Diagnostic 1: check arccos argument validity
+        b = float(c["impact_param"])
+        a = float(c["semimajor_axis"])
+        ratio = b / a
+        if abs(ratio) > 1.0:
+            print(f"  [DIAG] step {step_idx}: |b/a| = {abs(ratio):.6f} > 1 "
+                  f"(b={b:.4f}, a={a:.4f}) — arccos will produce NaN inclination")
 
         chi2 = compute_chi2(c)
+
+        # Diagnostic 2: NaN chi2 — dump key constrained values
+        if np.isnan(chi2):
+            nan_keys = ["impact_param", "semimajor_axis", "inclination",
+                        "eccentricity", "planet_radius", "p_rot"]
+            vals = ", ".join(f"{k}={float(c[k]):.6f}" for k in nan_keys if k in c)
+            print(f"  [DIAG] step {step_idx}: NaN chi2 — {vals}")
+            if step_idx == 0:
+                print("  [DIAG] NaN at step 0: problem is in initialization, "
+                      "not burn-in drift")
+
         param_str = "  ".join(f"{float(c[p]):>{col_w}.5f}" for p in _DIAG_PARAMS)
         print(f"{step_idx:>5}  {chi2:>9.4f}  {param_str}")
 
@@ -258,7 +277,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     all_unc_arr = np.stack(
         [np.array(all_unc_steps[name]) for name in PARAM_NAMES], axis=-1
     ).transpose(1, 0, 2)
-    run_step_diagnostics(all_unc_arr, constrain_fn, _unravel_fn, save_lcs=save_outputs,
+    run_step_diagnostics(all_unc_arr, constrain_fn, save_lcs=save_outputs,
                          output_dir=RWMH_OUTPUT_DIR)
     
     # --- Extract MAP sample ---

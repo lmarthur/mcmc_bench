@@ -46,8 +46,8 @@ NS_OUTPUT_DIR = OUTPUT_DIR / "ns"
 
 MAX_SAMPLES = 1e5
 NUM_POSTERIOR_DRAWS = 5000
-NUM_LIVE_POINTS = 200
-NUM_SLICES = 50
+NUM_LIVE_POINTS = 100
+NUM_SLICES = 25
 DLOGZ_THRESHOLD = 100.0
 
 # Diagnostic stride — print intermediate results every DIAG_STRIDE dead points
@@ -56,7 +56,7 @@ PLOT_STRIDE = 200
 
 _DIAG_PARAMS = [
     "spot_lat", "spot_long", "spot_size", "spot_flux",
-    "p_rot", "planet_radius", "inclination", "P_orb",
+    "p_rot", "planet_radius", "semimajor_axis", "P_orb",
 ]
 
 
@@ -111,7 +111,8 @@ def run_nested_sampling_diagnostics(results, output_dir=None):
     
     for idx in range(0, n_dead, DIAG_STRIDE):
         constrained = {name: np.array(samples_dict[name])[idx] for name in PARAM_NAMES}
-        
+
+        constrained["inclination"] = np.rad2deg(np.arccos(constrained["impact_param"] / constrained["semimajor_axis"]))
         constrained["eccentricity"] = constrained["ecc_h"]**2 + constrained["ecc_k"]**2
         constrained["arg_periapsis"] = np.arctan2(constrained["ecc_k"], constrained["ecc_h"])
         constrained["ldc_u1"] = 2 * np.sqrt(constrained["ldc_q1"]) * constrained["ldc_q2"]
@@ -220,8 +221,11 @@ def main(seed=0, save_outputs=True):
     ecc_k = np.array(uniform_samples["ecc_k"])
     ldc_q1 = np.array(uniform_samples["ldc_q1"])
     ldc_q2 = np.array(uniform_samples["ldc_q2"])
+    impact_param_arr   = np.array(uniform_samples["impact_param"])
+    semimajor_axis_arr = np.array(uniform_samples["semimajor_axis"])
     constrained_with_derived = {
         **{name: np.array(uniform_samples[name]) for name in PARAM_NAMES},
+        "inclination": np.rad2deg(np.arccos(impact_param_arr / semimajor_axis_arr)),
         "eccentricity": ecc_h**2 + ecc_k**2,
         "arg_periapsis": np.arctan2(ecc_k, ecc_h),
         "ldc_u1": 2 * np.sqrt(ldc_q1) * ldc_q2,
