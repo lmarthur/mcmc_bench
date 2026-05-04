@@ -126,6 +126,13 @@ def test_obs_shape_matches_times():
 def test_param_names_match_ground_truth():
     assert PARAM_NAMES == list(GROUND_TRUTH.keys())
     assert len(PARAM_NAMES) == 13
+    # New parameterization checks
+    assert "sin_lat" in PARAM_NAMES
+    assert "delta_T" in PARAM_NAMES
+    assert "semimajor_axis" in PARAM_NAMES
+    assert "spot_lat" not in PARAM_NAMES
+    assert "spot_flux" not in PARAM_NAMES
+    assert "inclination" not in PARAM_NAMES
 
 
 def test_param_names_all_present_in_postprocess_output():

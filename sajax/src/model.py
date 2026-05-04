@@ -546,7 +546,10 @@ def make_constrain_fn():
 
     def constrain_fn(z):
         c = {name: transforms[name](z[name]) for name in transforms}
-        c["semimajor_axis"] = jnp.abs(c["impact_param"] / jnp.cos(jnp.deg2rad(c["inclination"])))
+        # Deterministic sites (all derived quantities computed analytically)
+        c["spot_lat"] = jnp.rad2deg(jnp.arcsin(c["sin_lat"]))
+        c["spot_flux"] = ((T_STAR + c["delta_T"]) / T_STAR) ** 4
+        c["inclination"] = jnp.rad2deg(jnp.arccos(c["impact_param"] / c["semimajor_axis"]))
         c["eccentricity"]  = c["ecc_h"]**2 + c["ecc_k"]**2
         c["arg_periapsis"] = jnp.arctan2(c["ecc_k"], c["ecc_h"])
         c["ldc_u1"] = 2 * jnp.sqrt(c["ldc_q1"]) * c["ldc_q2"]
@@ -776,23 +779,32 @@ def compute_chi2(constrained: dict, model_dict: dict = STATIC_MODEL) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Ground truth dict — for sampler diagnostics
+# Ground truth dict — for sampler diagnostics.
+# Contains TRUE values (not measured values) so posteriors can be compared
+# to the actual data-generating parameters.
 # ---------------------------------------------------------------------------
 GROUND_TRUTH = {
-    "spot_lat": TRUE_SPOT_LAT,
-    "spot_long": TRUE_SPOT_LONG,
-    "spot_size": TRUE_SPOT_SIZE,
-    "spot_flux": FLUX_ACTIVE_SPOT[0],
-    "p_rot": TRUE_P_ROT,
-    "planet_radius": TRUE_PLANET_RADIUS,
-    "impact_param": jnp.abs(TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)),
-    # "semimajor_axis": TRUE_SEMI_MAJOR,
-    "inclination": float(jnp.rad2deg(TRUE_INCLINATION)),
-    "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
-    "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
-    "P_orb": TRUE_P_ORB,
-    "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
-    "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
+    # sin(TRUE_SPOT_LAT in radians) — the sampled variable in the new parameterization
+    "sin_lat":       float(jnp.sin(jnp.deg2rad(TRUE_SPOT_LAT))),
+    "spot_long":     float(TRUE_SPOT_LONG),
+    "spot_size":     float(TRUE_SPOT_SIZE),
+    # Temperature deviation: TRUE_DELTA_T = T_STAR * (FLUX_ACTIVE_SPOT[0]^0.25 - 1)
+    "delta_T":       float(TRUE_DELTA_T),
+    # Use true rotation period (prior is centered on measured value, but truth is TRUE_P_ROT)
+    "p_rot":         float(TRUE_P_ROT),
+    "planet_radius": float(TRUE_PLANET_RADIUS),
+    # semimajor axis: a/R_star computed from Kepler's 3rd law at model setup
+    "semimajor_axis": float(TRUE_SEMI_MAJOR),
+    # impact parameter: b = (a/R_star) * cos(i); i=90° → b=0 for edge-on
+    "impact_param":  float(TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)),
+    # ecc_h = √e·cos(ω); TRUE_ECCENTRICITY=0 → ecc_h=0
+    "ecc_h":         float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
+    "ecc_k":         float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
+    # Use true orbital period (prior centered on measured, truth is TRUE_P_ORB)
+    "P_orb":         float(TRUE_P_ORB),
+    # Kipping 2013 q parameters: q1 = (u1+u2)², q2 = u1/(2(u1+u2))
+    "ldc_q1":        float((TRUE_LDC_U1 + TRUE_LDC_U2) ** 2),
+    "ldc_q2":        float(TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2))),
 }
 
 PARAM_NAMES = list(GROUND_TRUTH.keys())
