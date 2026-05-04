@@ -41,9 +41,9 @@ from model import (
 RWMH_OUTPUT_DIR = OUTPUT_DIR / "rwmh"
 
 NDIM = len(PARAM_NAMES)
-NUM_BURNIN  = 10000
+NUM_BURNIN  = 1000
 NUM_SAMPLES = 5000
-NUM_CHAINS  = 10
+NUM_CHAINS  = 4
 
 
 def _unconstrained_prior_std(d) -> float:

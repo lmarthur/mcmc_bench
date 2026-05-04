@@ -48,7 +48,7 @@ MAX_SAMPLES = 1e5
 NUM_POSTERIOR_DRAWS = 5000
 NUM_LIVE_POINTS = 100
 NUM_SLICES = 25
-DLOGZ_THRESHOLD = 100.0
+DLOGZ_THRESHOLD = 5.0
 
 # Diagnostic stride — print intermediate results every DIAG_STRIDE dead points
 DIAG_STRIDE = 50
