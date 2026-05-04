@@ -58,7 +58,7 @@ _DIAG_PARAMS = [
 
 # Number of parallel chains (including the reference/hottest chain).
 # More chains → smoother temperature ladder, better mode mixing, higher cost.
-NUM_CHAINS = 15
+NUM_CHAINS = 30
 
 # Number of warm-up (burn-in) steps discarded before collecting samples.
 NUM_WARMUP = 500
@@ -101,8 +101,7 @@ def get_initial_positions(key: jax.Array, num_chains: int) -> jnp.ndarray:
     positions = []
     for name in PARAM_NAMES:
         key, subkey = jax.random.split(key)
-        prior_key = name.lower() if name.startswith("LDC") else name
-        samples = PRIOR_DISTRIBUTIONS[prior_key].sample(subkey, sample_shape=(num_chains,))
+        samples = PRIOR_DISTRIBUTIONS[name].sample(subkey, sample_shape=(num_chains,))
         positions.append(samples)
     return jnp.stack(positions, axis=-1)
 
@@ -251,11 +250,9 @@ def main(seed: int = 0, save_outputs: bool = True):
     t0 = time.perf_counter()
 
     # --- Reference distribution: the joint prior (likelihood-tempering path) ---
-    prior_keys = [name.lower() if name.startswith("LDC") else name for name in PARAM_NAMES]
-
     def log_ref(x):
         total = jnp.array(0.0)
-        for i, key in enumerate(prior_keys):
+        for i, key in enumerate(PARAM_NAMES):
             total = total + PRIOR_DISTRIBUTIONS[key].log_prob(x[i])
         return total
 

@@ -51,7 +51,7 @@ NDIM = len(PARAM_NAMES)
 # reach shape [N_particles, n_times, n_pixels] which exhausts GPU VRAM at
 # N_particles=2000 (~47 GB per intermediate tensor on this model).
 # Keep N_particles <= 500 for the L40S (48 GB); 200 is a safe default.
-NUM_PARTICLES = 250
+NUM_PARTICLES = 100
 TARGET_ESS = 0.75    # target ESS fraction for adaptive temperature step
 NUM_MCMC_STEPS = 25   # RMH refreshment steps per SMC iteration
 MAX_STEPS = 500       # safety cap on SMC iterations
@@ -185,7 +185,7 @@ def main(seed: int = 0, save_outputs: bool = True):
     _print(f"\n=== Step-by-Step Diagnostics (stride={DIAG_STRIDE}) ===")
     _print("ESS=effective sample size, max_w=max particle weight, jump=mean L2 step\n")
     _print(diag_header)
-    _print(diag_sep)
+    _print(diag_sep) 
 
     while state.tempering_param < 1.0 and num_steps < MAX_STEPS:
         prev_particles = np.array(state.particles)
