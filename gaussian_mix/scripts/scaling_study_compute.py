@@ -88,7 +88,7 @@ NUM_TRIALS = 10  # seeds 0 .. NUM_TRIALS-1
 
 NUTS_MEAN_TREE_DEPTH    = 7      # mean leapfrog steps per NUTS iteration (empirical average)
 NUTS_WARMUP_DEPTH_EST   = 5      # same depth assumed during warmup (empirical average)
-GRAD_TO_LOGP_RATIO      = 1.5    # 1 grad eval ≈ 1.5 logp evals
+GRAD_TO_LOGP_RATIO      = 1.3    # 1 grad eval ≈ 1.3 logp evals
 
 SMC_EST_NUM_STEPS       = 15     # typical adaptive tempering steps (empirical average)
 
