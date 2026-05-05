@@ -34,6 +34,7 @@ from scaling_config import (
     SCALING_OUT_DIR, SCRIPTS_DIR,
     back_compute, extract_actual_oracle,
     compute_normalised_mae, compute_raw_mae, compute_per_param_normalised_error,
+    compute_lc_rmse,
 )
 
 
@@ -67,6 +68,7 @@ def run_trial(algo: str, budget: int, seed: int) -> dict:
         "total_bulk_ess":      None,
         "actual_oracle_evals": None,
         "actual_oracle_type":  None,
+        "lc_rmse":             None,
         "error":               None,
     }
     try:
@@ -104,6 +106,7 @@ def run_trial(algo: str, budget: int, seed: int) -> dict:
         raw_mae   = compute_raw_mae(post_means, gt)
         per_param = compute_per_param_normalised_error(post_means, gt)
         bulk_ess  = diag.get("total_bulk_ess")
+        lc_rmse   = compute_lc_rmse(post_means)
 
         actual_evals, oracle_type = extract_actual_oracle(algo, diag)
         wall_time = diag.get("wall_time_s", t_total)
@@ -119,6 +122,7 @@ def run_trial(algo: str, budget: int, seed: int) -> dict:
             "total_bulk_ess":      float(bulk_ess) if bulk_ess is not None else None,
             "actual_oracle_evals": actual_evals,
             "actual_oracle_type":  oracle_type,
+            "lc_rmse":             lc_rmse,
         })
     except Exception as exc:
         import traceback

@@ -13,7 +13,7 @@ import numpy as np
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from model import OUTPUT_DIR, PARAM_NAMES, GROUND_TRUTH, PRIOR_DISTRIBUTIONS
+from model import OUTPUT_DIR, PARAM_NAMES, GROUND_TRUTH, PRIOR_DISTRIBUTIONS, LC_TRUE, compute_lc_from_constrained
 
 SCRIPTS_DIR     = Path(__file__).parent
 SCALING_OUT_DIR = OUTPUT_DIR / "scaling_compute"
@@ -29,7 +29,7 @@ NUM_TRIALS   = 5  # seeds 0 .. NUM_TRIALS-1
 # Pilot estimates for unknowns in the cost models
 # ---------------------------------------------------------------------------
 
-SMC_EST_NUM_STEPS       = 15   # typical adaptive tempering steps
+SMC_EST_NUM_STEPS       = 91   # typical adaptive tempering steps
 NS_EVALS_PER_LIVE_POINT = 3721  # total_likelihood_evals / NUM_LIVE_POINTS
 
 # ---------------------------------------------------------------------------
@@ -194,3 +194,36 @@ def compute_per_param_normalised_error(posterior_means: dict, ground_truth: dict
             std = PRIOR_STDS.get(name, 1.0)
             out[name] = float(err / std) if std > 0 else float(err)
     return out
+
+
+def _sampled_to_constrained(posterior_means: dict) -> dict:
+    """Convert sampled-parameter dict (PARAM_NAMES keys) to constrained dict for compute_lc_from_constrained."""
+    sin_lat        = float(posterior_means.get("sin_lat", 0.0))
+    ldc_q1         = float(posterior_means.get("ldc_q1", 0.0))
+    ldc_q2         = float(posterior_means.get("ldc_q2", 0.0))
+    ecc_h          = float(posterior_means.get("ecc_h", 0.0))
+    ecc_k          = float(posterior_means.get("ecc_k", 0.0))
+    semimajor_axis = float(posterior_means.get("semimajor_axis", 1.0))
+    impact_param   = float(posterior_means.get("impact_param", 0.0))
+    return {
+        "spot_lat":      float(np.rad2deg(np.arcsin(np.clip(sin_lat, -1.0, 1.0)))),
+        "spot_long":     float(posterior_means.get("spot_long", 0.0)),
+        "spot_size":     float(posterior_means.get("spot_size", 11.0)),
+        "spot_flux":     float(posterior_means.get("spot_flux", 0.7)),
+        "p_rot":         float(posterior_means.get("p_rot", 0.5)),
+        "P_orb":         float(posterior_means.get("P_orb", 1.0)),
+        "planet_radius": float(posterior_means.get("planet_radius", 0.1)),
+        "semimajor_axis": semimajor_axis,
+        "inclination":   float(np.rad2deg(np.arccos(np.clip(impact_param / semimajor_axis, -1.0, 1.0)))),
+        "eccentricity":  ecc_h ** 2 + ecc_k ** 2,
+        "arg_periapsis": float(np.arctan2(ecc_k, ecc_h)),
+        "ldc_u1":        float(2 * np.sqrt(max(ldc_q1, 0.0)) * ldc_q2),
+        "ldc_u2":        float(np.sqrt(max(ldc_q1, 0.0)) * (1.0 - 2.0 * ldc_q2)),
+    }
+
+
+def compute_lc_rmse(posterior_means: dict) -> float:
+    """RMSE of the posterior-mean light curve vs. the true noiseless light curve."""
+    constrained = _sampled_to_constrained(posterior_means)
+    lc_fit = np.array(compute_lc_from_constrained(constrained))
+    return float(np.sqrt(np.mean((lc_fit - LC_TRUE) ** 2)))
