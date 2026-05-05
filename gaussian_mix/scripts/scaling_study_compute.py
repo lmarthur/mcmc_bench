@@ -1,5 +1,5 @@
 """
-Scaling study: mode weight MAE vs. wall-clock time across algorithms and effort levels.
+Scaling study: mode weight RMSE vs. wall-clock time across algorithms and effort levels.
 
 Runs repeated trials of each inference algorithm over a range of effort levels,
 where effort is defined by a shared log-density-equivalent (LDE) budget.
@@ -219,7 +219,7 @@ def run_trial(algo: str, budget: int, seed: int) -> dict:
         "seed":              seed,
         "wall_time_core_s":  None,
         "wall_time_total_s": None,
-        "mode_weight_mae":   None,
+        "mode_weight_rmse":  None,
         "mode_weights":      None,
         "true_mode_weights": None,
         "actual_oracle_evals": None,
@@ -252,9 +252,9 @@ def run_trial(algo: str, budget: int, seed: int) -> dict:
         for lg, lv in zip(_loggers, _prev_lvls):
             lg.setLevel(lv)
 
-        mw  = np.array(diag["mode_weights"])
-        tw  = np.array(diag["true_mode_weights"])
-        mae = float(np.mean(np.abs(mw - tw)))
+        mw   = np.array(diag["mode_weights"])
+        tw   = np.array(diag["true_mode_weights"])
+        rmse = float(np.sqrt(np.mean((mw - tw) ** 2)))
 
         # Extract actual oracle consumption from diagnostics
         actual_evals, oracle_type = _extract_actual_oracle(algo, diag)
@@ -262,7 +262,7 @@ def run_trial(algo: str, budget: int, seed: int) -> dict:
         base.update({
             "wall_time_core_s":    float(diag["wall_time_core_s"]),
             "wall_time_total_s":   float(diag["wall_time_total_s"]),
-            "mode_weight_mae":     mae,
+            "mode_weight_rmse":    rmse,
             "mode_weights":        mw.tolist(),
             "true_mode_weights":   tw.tolist(),
             "actual_oracle_evals": actual_evals,
@@ -368,23 +368,26 @@ def _print_effort_table(algorithms: list) -> None:
 def aggregate(records: list) -> dict:
     """
     Aggregate the flat record list into:
-      { algo: { budget: { core_times, total_times, maes, actual_evals } } }
+      { algo: { budget: { core_times, total_times, rmses, actual_evals } } }
     """
     out = defaultdict(lambda: defaultdict(lambda: {
         "core_times":   [],
         "total_times":  [],
-        "maes":         [],
+        "rmses":        [],
         "actual_evals": [],
         "actual_lde":   [],
     }))
     for rec in records:
-        if rec.get("error") or rec["mode_weight_mae"] is None:
+        if rec.get("error") or rec.get("mode_weights") is None:
             continue
         a = rec["algorithm"]
         b = rec["budget_lde"]
+        mw   = np.array(rec["mode_weights"])
+        tw   = np.array(rec["true_mode_weights"])
+        rmse = float(np.sqrt(np.mean((mw - tw) ** 2)))
         out[a][b]["core_times"].append(rec["wall_time_core_s"])
         out[a][b]["total_times"].append(rec["wall_time_total_s"])
-        out[a][b]["maes"].append(rec["mode_weight_mae"])
+        out[a][b]["rmses"].append(rmse)
         if rec["actual_oracle_evals"] is not None:
             out[a][b]["actual_evals"].append(rec["actual_oracle_evals"])
             # Normalise grad evals to LDE so all algorithms share the same axis
@@ -403,7 +406,7 @@ def aggregate(records: list) -> dict:
 def make_plots(records: list) -> None:
     """
     Generate two publication-ready figures:
-      mae_combined.png       -- ModeMAE vs LDE budget and vs core time (side-by-side, shared y-axis)
+      rmse_combined.png       -- Mode RMSE vs LDE budget and vs core time (side-by-side, shared y-axis)
       budget_utilisation.png -- Actual oracle evals vs target budget (sanity check)
     """
     _rc = {
@@ -429,30 +432,30 @@ def make_plots(records: list) -> None:
 
     SCALING_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ---- Combined figure: MAE vs budget | MAE vs core time (shared y-axis) ----
+    # ---- Combined figure: RMSE vs budget | RMSE vs core time (shared y-axis) ----
     with matplotlib.rc_context(_rc):
         fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
 
-        _draw_mae_on_ax(
+        _draw_rmse_on_ax(
             agg, algo_order, color_map, ax_l,
             x_key="actual_lde",
             xlabel="Actual oracle budget (LDE, grad-normalised)",
-            title="Mode weight MAE vs. actual oracle budget",
+            title="Mode weight RMSE vs. actual oracle budget",
             show_legend=True,
             show_annotation=False,
         )
-        _draw_mae_on_ax(
+        _draw_rmse_on_ax(
             agg, algo_order, color_map, ax_r,
             x_key="core_times",
             xlabel="Wall-clock time (s)",
-            title="Mode weight MAE vs. core sampling time",
+            title="Mode weight RMSE vs. core sampling time",
             show_legend=False,
             show_annotation=False,
         )
 
-        ax_l.set_ylabel("Mode weight MAE")
+        ax_l.set_ylabel("Mode weight RMSE")
         fig.tight_layout()
-        fname = SCALING_OUT_DIR / "mae_combined.pdf"
+        fname = SCALING_OUT_DIR / "rmse_combined.pdf"
         fig.savefig(fname, dpi=200, bbox_inches="tight")
         plt.close(fig)
         print(f"Saved {fname}")
@@ -463,19 +466,19 @@ def make_plots(records: list) -> None:
     print(f"Saved plots to {SCALING_OUT_DIR}/")
 
 
-def _draw_mae_on_ax(agg, algo_order, color_map, ax, x_key, xlabel, title,
+def _draw_rmse_on_ax(agg, algo_order, color_map, ax, x_key, xlabel, title,
                     show_legend=True, show_annotation=True):
-    """Draw MAE-vs-X curves onto an existing axes object."""
+    """Draw RMSE-vs-X curves onto an existing axes object."""
     for algo in algo_order:
         if algo not in agg:
             continue
         effort_data = agg[algo]
-        med_x, med_mae, q25_mae, q75_mae = [], [], [], []
+        med_x, med_rmse, q25_rmse, q75_rmse = [], [], [], []
 
         for budget in sorted(effort_data.keys()):
-            d    = effort_data[budget]
-            maes = np.array(d["maes"])
-            if len(maes) == 0:
+            d     = effort_data[budget]
+            rmses = np.array(d["rmses"])
+            if len(rmses) == 0:
                 continue
 
             if x_key == "budget":
@@ -484,18 +487,18 @@ def _draw_mae_on_ax(agg, algo_order, color_map, ax, x_key, xlabel, title,
                 times = np.array(d[x_key])
                 med_x.append(float(np.median(times)))
 
-            med_mae.append(float(np.median(maes)))
-            q25_mae.append(float(np.percentile(maes, 25)))
-            q75_mae.append(float(np.percentile(maes, 75)))
+            med_rmse.append(float(np.median(rmses)))
+            q25_rmse.append(float(np.percentile(rmses, 25)))
+            q75_rmse.append(float(np.percentile(rmses, 75)))
 
         if not med_x:
             continue
 
         idx = np.argsort(med_x)
         mx  = np.array(med_x)[idx]
-        mm  = np.array(med_mae)[idx]
-        lo  = np.array(q25_mae)[idx]
-        hi  = np.array(q75_mae)[idx]
+        mm  = np.array(med_rmse)[idx]
+        lo  = np.array(q25_rmse)[idx]
+        hi  = np.array(q75_rmse)[idx]
         c   = color_map[algo]
 
         ax.plot(mx, mm, marker="o", markersize=5, lw=1.5,
@@ -579,7 +582,7 @@ def _plot_budget_utilisation(agg, algo_order, color_map, rc):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Scaling study: ModeMAE vs compute budget (LDE-normalised)",
+        description="Scaling study: ModeRMSE vs compute budget (LDE-normalised)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
