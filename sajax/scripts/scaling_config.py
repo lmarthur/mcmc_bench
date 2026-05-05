@@ -22,7 +22,7 @@ SCALING_OUT_DIR = OUTPUT_DIR / "scaling_compute"
 # Budget levels and trial count
 # ---------------------------------------------------------------------------
 
-LOGP_BUDGETS = [50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000]
+LOGP_BUDGETS = [200_000, 500_000, 1_000_000, 2_000_000]
 NUM_TRIALS   = 5  # seeds 0 .. NUM_TRIALS-1
 
 # ---------------------------------------------------------------------------
@@ -37,9 +37,9 @@ NS_EVALS_PER_LIVE_POINT = 3721  # total_likelihood_evals / NUM_LIVE_POINTS
 # ---------------------------------------------------------------------------
 
 ALGO_FIXED = {
-    "rwmh":   {"NUM_CHAINS": 4,   "NUM_BURNIN": 1000},
+    "rwmh":   {"NUM_CHAINS": 4,   "NUM_BURNIN": 2000},
 
-    "affinv": {"NUM_WALKERS": 52, "NUM_BURNIN": 1000},
+    "affinv": {"NUM_WALKERS": 52, "NUM_BURNIN": 2000},
 
     "smc":    {"NUM_MCMC_STEPS": 25, "TARGET_ESS": 0.75, "MAX_STEPS": 500,
                "SIGMA_FACTOR": 1.0},

@@ -284,6 +284,7 @@ def main(seed=0, save_outputs=True):
             results.total_num_likelihood_evaluations / max(1, int(results.total_num_samples))
         ),
         "jaxns_ess_kish": jaxns_ess,
+        "total_bulk_ess": jaxns_ess,
         "ess_per_likelihood_eval": ess_per_likelihood_eval,
         "posterior_means": {name: float(pm) for name, pm in zip(PARAM_NAMES, posterior_means)},
         "ground_truth": {k: float(v) for k, v in GROUND_TRUTH.items()},
