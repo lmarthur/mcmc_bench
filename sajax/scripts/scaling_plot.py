@@ -51,6 +51,7 @@ def aggregate(records: list) -> dict:
         "norm_maes":     [],
         "raw_maes":      [],
         "actual_evals":  [],
+        "actual_lde":    [],
         "ess":           [],
         "lc_rmses":      [],
         "norm_lc_rmses": [],
@@ -65,6 +66,7 @@ def aggregate(records: list) -> dict:
         out[a][b]["raw_maes"].append(rec["raw_mae"])
         if rec["actual_oracle_evals"] is not None:
             out[a][b]["actual_evals"].append(rec["actual_oracle_evals"])
+            out[a][b]["actual_lde"].append(float(rec["actual_oracle_evals"]))
         if rec["total_bulk_ess"] is not None:
             out[a][b]["ess"].append(rec["total_bulk_ess"])
         if rec.get("lc_rmse") is not None:
@@ -94,6 +96,63 @@ _RC = {
 }
 
 
+def _draw_metric_on_ax(agg, algo_order, ax, x_key, y_key, xlabel, num_trials,
+                        show_legend=True, show_annotation=True, logy=False):
+    """Draw metric curves onto an existing axes object."""
+    for algo in algo_order:
+        effort_data = agg[algo]
+        med_x, med_y, q25_y, q75_y = [], [], [], []
+
+        for budget in sorted(effort_data.keys()):
+            d = effort_data[budget]
+            y_vals = np.array(d[y_key])
+            if len(y_vals) == 0:
+                continue
+
+            if x_key == "budget":
+                med_x.append(float(budget))
+            else:
+                x_vals = np.array(d[x_key])
+                if len(x_vals) == 0:
+                    continue
+                med_x.append(float(np.median(x_vals)))
+
+            med_y.append(float(np.median(y_vals)))
+            q25_y.append(float(np.percentile(y_vals, 25)))
+            q75_y.append(float(np.percentile(y_vals, 75)))
+
+        if not med_x:
+            continue
+
+        idx = np.argsort(med_x)
+        mx  = np.array(med_x)[idx]
+        my  = np.array(med_y)[idx]
+        lo  = np.array(q25_y)[idx]
+        hi  = np.array(q75_y)[idx]
+        c   = ALGO_COLORS.get(algo, "gray")
+
+        ax.plot(mx, my, marker="o", markersize=5, lw=1.5,
+                color=c, label=ALGO_LABELS.get(algo, algo), zorder=3)
+        ax.fill_between(mx, lo, hi, alpha=0.15, color=c, zorder=2)
+
+    ax.set_xscale("log")
+    if logy:
+        ax.set_yscale("log")
+    ax.set_xlabel(xlabel)
+    ax.grid(True, which="major", linestyle="--", linewidth=0.6,
+            color="gray", alpha=0.4, zorder=1)
+    ax.grid(True, which="minor", linestyle=":", linewidth=0.4,
+            color="gray", alpha=0.2, zorder=1)
+    if show_legend:
+        ax.legend(loc="best")
+    if show_annotation:
+        ax.annotate(
+            f"Shaded band = IQR across {num_trials} trials",
+            xy=(0.02, 0.04), xycoords="axes fraction",
+            fontsize=8, color="gray",
+        )
+
+
 def _plot_metric_vs_x(agg, algo_order, x_key, y_key, fname, xlabel, ylabel,
                        title, logy=False):
     num_trials = max(
@@ -102,59 +161,41 @@ def _plot_metric_vs_x(agg, algo_order, x_key, y_key, fname, xlabel, ylabel,
     )
     with matplotlib.rc_context(_RC):
         fig, ax = plt.subplots(figsize=(7, 5))
-
-        for algo in algo_order:
-            effort_data = agg[algo]
-            med_x, med_y, q25_y, q75_y = [], [], [], []
-
-            for budget in sorted(effort_data.keys()):
-                d = effort_data[budget]
-                y_vals = np.array(d[y_key])
-                if len(y_vals) == 0:
-                    continue
-
-                if x_key == "budget":
-                    med_x.append(float(budget))
-                else:
-                    x_vals = np.array(d[x_key])
-                    if len(x_vals) == 0:
-                        continue
-                    med_x.append(float(np.median(x_vals)))
-
-                med_y.append(float(np.median(y_vals)))
-                q25_y.append(float(np.percentile(y_vals, 25)))
-                q75_y.append(float(np.percentile(y_vals, 75)))
-
-            if not med_x:
-                continue
-
-            idx = np.argsort(med_x)
-            mx  = np.array(med_x)[idx]
-            my  = np.array(med_y)[idx]
-            lo  = np.array(q25_y)[idx]
-            hi  = np.array(q75_y)[idx]
-            c   = ALGO_COLORS.get(algo, "gray")
-
-            ax.plot(mx, my, marker="o", markersize=5, lw=1.5,
-                    color=c, label=ALGO_LABELS.get(algo, algo), zorder=3)
-            ax.fill_between(mx, lo, hi, alpha=0.15, color=c, zorder=2)
-
-        ax.set_xscale("log")
-        if logy:
-            ax.set_yscale("log")
-        ax.set_xlabel(xlabel)
+        _draw_metric_on_ax(agg, algo_order, ax, x_key, y_key, xlabel,
+                           num_trials, show_legend=True, show_annotation=True, logy=logy)
         ax.set_ylabel(ylabel)
         ax.set_title(title, pad=8)
-        ax.grid(True, which="major", linestyle="--", linewidth=0.6,
-                color="gray", alpha=0.4, zorder=1)
-        ax.grid(True, which="minor", linestyle=":", linewidth=0.4,
-                color="gray", alpha=0.2, zorder=1)
-        ax.legend(loc="best")
-        ax.annotate(
-            f"Shaded band = IQR across {num_trials} trials",
-            xy=(0.02, 0.04), xycoords="axes fraction",
-            fontsize=8, color="gray",
+        fig.tight_layout()
+        out = SCALING_OUT_DIR / fname
+        fig.savefig(out, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved {out}")
+
+
+def _plot_metric_combined(agg, algo_order, y_key, ylabel, fname,
+                           title_l, title_r, logy=False):
+    """Combined 1×2 figure: metric vs actual oracle budget | metric vs wall time."""
+    num_trials = max(
+        (len(d[y_key]) for a in agg for d in agg[a].values()),
+        default=NUM_TRIALS,
+    )
+    with matplotlib.rc_context(_RC):
+        fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+
+        _draw_metric_on_ax(
+            agg, algo_order, ax_l, "actual_lde", y_key,
+            "Actual oracle budget (LDE)",
+            num_trials, show_legend=True, show_annotation=False, logy=logy,
         )
+        _draw_metric_on_ax(
+            agg, algo_order, ax_r, "wall_times", y_key,
+            "Wall-clock time (s)",
+            num_trials, show_legend=False, show_annotation=False, logy=logy,
+        )
+
+        ax_l.set_title(title_l, pad=8)
+        ax_r.set_title(title_r, pad=8)
+        ax_l.set_ylabel(ylabel)
         fig.tight_layout()
         out = SCALING_OUT_DIR / fname
         fig.savefig(out, dpi=200, bbox_inches="tight")
@@ -332,21 +373,13 @@ def make_plots(records: list, algo_order: list) -> None:
 
     SCALING_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    _plot_metric_vs_x(
+    _plot_metric_combined(
         agg, present,
-        x_key="budget", y_key="norm_maes",
-        fname="norm_mae_vs_budget.png",
-        xlabel="Log-density-equivalent budget (LDE)",
+        y_key="norm_maes",
         ylabel="Normalised parameter MAE\n(|posterior mean − truth| / prior σ)",
-        title="Parameter recovery vs. compute budget",
-    )
-    _plot_metric_vs_x(
-        agg, present,
-        x_key="wall_times", y_key="norm_maes",
-        fname="norm_mae_vs_wall_time.png",
-        xlabel="Wall-clock time (s)",
-        ylabel="Normalised parameter MAE",
-        title="Parameter recovery vs. wall-clock time",
+        fname="norm_mae_combined.pdf",
+        title_l="Parameter recovery vs. actual oracle budget",
+        title_r="Parameter recovery vs. wall-clock time",
     )
     _plot_metric_vs_x(
         agg, present,
@@ -357,22 +390,13 @@ def make_plots(records: list, algo_order: list) -> None:
         title="Effective sample size vs. compute budget",
         logy=True,
     )
-    _plot_metric_vs_x(
+    _plot_metric_combined(
         agg, present,
-        x_key="budget", y_key="norm_lc_rmses",
-        fname="lc_rmse_vs_budget.png",
-        xlabel="Log-density-equivalent budget (LDE)",
+        y_key="norm_lc_rmses",
         ylabel="Light-curve RMSE / 100 ppm",
-        title="Best-fit light-curve RMSE vs. compute budget",
-        logy=True,
-    )
-    _plot_metric_vs_x(
-        agg, present,
-        x_key="wall_times", y_key="norm_lc_rmses",
-        fname="lc_rmse_vs_wall_time.png",
-        xlabel="Wall-clock time (s)",
-        ylabel="Light-curve RMSE / 100 ppm",
-        title="Best-fit light-curve RMSE vs. wall-clock time",
+        fname="lc_rmse_combined.pdf",
+        title_l="Best-fit light-curve RMSE vs. actual oracle budget",
+        title_r="Best-fit light-curve RMSE vs. wall-clock time",
         logy=True,
     )
     _plot_budget_utilisation(agg, present)

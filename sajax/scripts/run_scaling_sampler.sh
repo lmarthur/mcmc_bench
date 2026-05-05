@@ -2,8 +2,8 @@
 #SBATCH -N 1
 #SBATCH -n 8
 #SBATCH --mem-per-cpu=4G
-#SBATCH -p mit_normal_gpu
-#SBATCH -G l40s:1
+#SBATCH -p mit_preemptable
+#SBATCH -G h100:1
 #SBATCH -o sajax/output/scaling_compute/slurm_%x_%j.out
 #SBATCH -e sajax/output/scaling_compute/slurm_%x_%j.err
 

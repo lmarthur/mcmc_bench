@@ -1,632 +1,12 @@
 [
   {
     "algorithm": "deo",
-    "budget_lde": 50000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 1166,
-    "trial": 0,
-    "seed": 0,
-    "wall_time_s": 28.301317278004717,
-    "normalised_mae": 0.605091128425636,
-    "raw_mae": 0.5049546848532611,
-    "per_param_error": {
-      "sin_lat": 0.8803716394078246,
-      "spot_long": 0.0018910452730937256,
-      "spot_size": 0.37690338932152867,
-      "spot_flux": 0.3965394020080568,
-      "p_rot": 0.05997598238262515,
-      "planet_radius": 0.2242830243958685,
-      "ldc_q1": 0.15928380432094677,
-      "ldc_q2": 1.2396062407356239,
-      "semimajor_axis": 0.03822401852903959,
-      "impact_param": 0.8296331987377797,
-      "ecc_h": 0.4405409891963861,
-      "ecc_k": 0.2909133615819368,
-      "P_orb": 2.9280185736425572
-    },
-    "posterior_means": {
-      "sin_lat": 0.595438539981842,
-      "spot_long": 5.196523189544678,
-      "spot_size": 15.334332466125488,
-      "spot_flux": 0.7991348505020142,
-      "p_rot": 0.5059975981712341,
-      "planet_radius": 0.108579121530056,
-      "ldc_q1": 0.31401872634887695,
-      "ldc_q2": 0.6911768317222595,
-      "semimajor_axis": 3.7175679206848145,
-      "impact_param": 0.47898876667022705,
-      "ecc_h": -0.022027049213647842,
-      "ecc_k": 0.014545667916536331,
-      "P_orb": 1.0014640092849731
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 126.0,
-    "actual_oracle_evals": 49980,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.00037525847437791526,
-    "error": null,
-    "wall_time_total_s": 32.979178067995235
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 50000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 1166,
-    "trial": 1,
-    "seed": 1,
-    "wall_time_s": 13.548756879055873,
-    "normalised_mae": 0.9139957524869469,
-    "raw_mae": 29.30045627340983,
-    "per_param_error": {
-      "sin_lat": 0.8599276738970723,
-      "spot_long": 3.4625058909745583,
-      "spot_size": 1.7220069828208031,
-      "spot_flux": 0.9443118095397951,
-      "p_rot": 0.3019821677578483,
-      "planet_radius": 0.5126457275312173,
-      "ldc_q1": 0.012650970780532346,
-      "ldc_q2": 1.203524670757404,
-      "semimajor_axis": 0.007101674214746122,
-      "impact_param": 0.04171789009188412,
-      "ecc_h": 0.09545528436588442,
-      "ecc_k": 0.2850524367956717,
-      "P_orb": 2.43306160280289
-    },
-    "posterior_means": {
-      "sin_lat": 0.5836352109909058,
-      "spot_long": 364.83416748046875,
-      "spot_size": 30.80282211303711,
-      "spot_flux": 0.9360779523849487,
-      "p_rot": 0.46980178356170654,
-      "planet_radius": 0.08039062470197678,
-      "ldc_q1": 0.3636520206928253,
-      "ldc_q2": 0.6807609796524048,
-      "semimajor_axis": 4.1171088218688965,
-      "impact_param": -0.02408601902425289,
-      "ecc_h": -0.004772764164954424,
-      "ecc_k": 0.014252621680498123,
-      "P_orb": 0.9987834692001343
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 21.0,
-    "actual_oracle_evals": 49980,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.0006915661506354809,
-    "error": null,
-    "wall_time_total_s": 17.96554855001159
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 50000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 1166,
-    "trial": 2,
-    "seed": 2,
-    "wall_time_s": 13.114271448983345,
-    "normalised_mae": 0.4027457902285944,
-    "raw_mae": 13.034533497115063,
-    "per_param_error": {
-      "sin_lat": 0.002651120139319654,
-      "spot_long": 1.6109042454614158,
-      "spot_size": 0.07961443335948773,
-      "spot_flux": 0.11585621833801252,
-      "p_rot": 0.4589313319951073,
-      "planet_radius": 0.017480270774509078,
-      "ldc_q1": 0.34112211959483774,
-      "ldc_q2": 0.7639002113143686,
-      "semimajor_axis": 0.045390810637710055,
-      "impact_param": 0.10514306686682533,
-      "ecc_h": 1.1747878176136444,
-      "ecc_k": 0.5016746055521959,
-      "P_orb": 0.018239021324294082
-    },
-    "posterior_means": {
-      "sin_lat": 0.08868636190891266,
-      "spot_long": 172.4100799560547,
-      "spot_size": 11.91555404663086,
-      "spot_flux": 0.6710359454154968,
-      "p_rot": 0.545893132686615,
-      "planet_radius": 0.09933135658502579,
-      "ldc_q1": 0.45847347378730774,
-      "ldc_q2": 0.11281433701515198,
-      "semimajor_axis": 3.6255624294281006,
-      "impact_param": 0.06070419400930405,
-      "ecc_h": -0.05873939022421837,
-      "ecc_k": -0.02508372999727726,
-      "P_orb": 0.9999908804893494
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 57.0,
-    "actual_oracle_evals": 49980,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.009956758469343185,
-    "error": null,
-    "wall_time_total_s": 17.543863477010746
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 50000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 1166,
-    "trial": 3,
-    "seed": 3,
-    "wall_time_s": 13.396354542986955,
-    "normalised_mae": 0.7093822978409428,
-    "raw_mae": 17.635512365311858,
-    "per_param_error": {
-      "sin_lat": 0.6353645564976917,
-      "spot_long": 2.127199711938017,
-      "spot_size": 0.5858419754316513,
-      "spot_flux": 0.6327414035797121,
-      "p_rot": 0.22868544118872408,
-      "planet_radius": 0.04123178575773804,
-      "ldc_q1": 0.27915520444463154,
-      "ldc_q2": 1.1218943703778965,
-      "semimajor_axis": 0.018879646915887414,
-      "impact_param": 0.2662055742353417,
-      "ecc_h": 1.3871345078997446,
-      "ecc_k": 0.7920887409756565,
-      "P_orb": 1.1055469526895643
-    },
-    "posterior_means": {
-      "sin_lat": 0.4539836347103119,
-      "spot_long": 226.06507873535156,
-      "spot_size": 17.73709487915039,
-      "spot_flux": 0.858185350894928,
-      "p_rot": 0.4771314561367035,
-      "planet_radius": 0.10157717019319534,
-      "ldc_q1": 0.4405851662158966,
-      "ldc_q2": 0.009470324963331223,
-      "semimajor_axis": 3.9659061431884766,
-      "impact_param": 0.15369367599487305,
-      "ecc_h": -0.06935672461986542,
-      "ecc_k": -0.03960443660616875,
-      "P_orb": 1.000552773475647
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 29.0,
-    "actual_oracle_evals": 49980,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.00839137751609087,
-    "error": null,
-    "wall_time_total_s": 17.845177094975952
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 50000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 1166,
-    "trial": 4,
-    "seed": 4,
-    "wall_time_s": 13.452396524022333,
-    "normalised_mae": 0.572312510595087,
-    "raw_mae": 23.466585853137694,
-    "per_param_error": {
-      "sin_lat": 0.2455514712290686,
-      "spot_long": 2.8800266342556022,
-      "spot_size": 0.40214009689904295,
-      "spot_flux": 0.46464247703552264,
-      "p_rot": 0.09420454607387499,
-      "planet_radius": 0.01692573295802452,
-      "ldc_q1": 0.3261075581056379,
-      "ldc_q2": 0.8682596262689339,
-      "semimajor_axis": 0.03234504231310669,
-      "impact_param": 0.10537851465345523,
-      "ecc_h": 0.040665683791030395,
-      "ecc_k": 0.9705634523618608,
-      "P_orb": 0.9932518017909693
-    },
-    "posterior_means": {
-      "sin_lat": 0.2289249449968338,
-      "spot_long": 304.3011474609375,
-      "spot_size": 15.624550819396973,
-      "spot_flux": 0.8161606192588806,
-      "p_rot": 0.4905795454978943,
-      "planet_radius": 0.09935256838798523,
-      "ldc_q1": 0.4541391432285309,
-      "ldc_q2": 0.08268836885690689,
-      "semimajor_axis": 3.7930407524108887,
-      "impact_param": 0.06084012985229492,
-      "ecc_h": 0.002033284166827798,
-      "ecc_k": 0.048528172075748444,
-      "P_orb": 1.0004966259002686
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 97.0,
-    "actual_oracle_evals": 49980,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.0055808136239647865,
-    "error": null,
-    "wall_time_total_s": 17.891812723013572
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 100000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 2833,
-    "trial": 0,
-    "seed": 0,
-    "wall_time_s": 22.175847863021772,
-    "normalised_mae": 0.5975190908006316,
-    "raw_mae": 0.48702984980751085,
-    "per_param_error": {
-      "sin_lat": 0.879191625946085,
-      "spot_long": 0.0008075251839618603,
-      "spot_size": 0.36790655730589567,
-      "spot_flux": 0.3697254180908205,
-      "p_rot": 0.06015300817958648,
-      "planet_radius": 0.17606297138408405,
-      "ldc_q1": 0.1710769187357703,
-      "ldc_q2": 1.2303484518320338,
-      "semimajor_axis": 0.03771008447369547,
-      "impact_param": 0.8275164528049034,
-      "ecc_h": 0.4354933325442672,
-      "ecc_k": 0.2827835859669401,
-      "P_orb": 2.9289722479601674
-    },
-    "posterior_means": {
-      "sin_lat": 0.5947572588920593,
-      "spot_long": 5.083920478820801,
-      "spot_size": 15.230870246887207,
-      "spot_flux": 0.7924313545227051,
-      "p_rot": 0.5060153007507324,
-      "planet_radius": 0.10673464089632034,
-      "ldc_q1": 0.31061434745788574,
-      "ldc_q2": 0.6885043382644653,
-      "semimajor_axis": 3.724165678024292,
-      "impact_param": 0.47776666283607483,
-      "ecc_h": -0.021774666383862495,
-      "ecc_k": 0.014139179140329361,
-      "P_orb": 1.0014644861221313
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 89.0,
-    "actual_oracle_evals": 99990,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.00032539654057472944,
-    "error": null,
-    "wall_time_total_s": 26.903919271950144
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 100000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 2833,
-    "trial": 1,
-    "seed": 1,
-    "wall_time_s": 20.65166864002822,
-    "normalised_mae": 0.9107277631064821,
-    "raw_mae": 29.306459529616443,
-    "per_param_error": {
-      "sin_lat": 0.8494048031946935,
-      "spot_long": 3.4644572319875206,
-      "spot_size": 1.710381126686746,
-      "spot_flux": 0.9490777969360353,
-      "p_rot": 0.3296011723160875,
-      "planet_radius": 0.44869838212244334,
-      "ldc_q1": 0.023013822159578118,
-      "ldc_q2": 1.2067161787325762,
-      "semimajor_axis": 0.008035383916133055,
-      "impact_param": 0.038152304686460796,
-      "ecc_h": 0.08209465163306875,
-      "ecc_k": 0.2918788823322827,
-      "P_orb": 2.4379491836806424
-    },
-    "posterior_means": {
-      "sin_lat": 0.5775598287582397,
-      "spot_long": 365.0369567871094,
-      "spot_size": 30.669126510620117,
-      "spot_flux": 0.9372694492340088,
-      "p_rot": 0.46703988313674927,
-      "planet_radius": 0.08283669501543045,
-      "ldc_q1": 0.3666435182094574,
-      "ldc_q2": 0.681682288646698,
-      "semimajor_axis": 4.105122089385986,
-      "impact_param": -0.022027427330613136,
-      "ecc_h": -0.004104732535779476,
-      "ecc_k": 0.014593943953514099,
-      "P_orb": 0.9987810254096985
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 31.0,
-    "actual_oracle_evals": 99990,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.000638113880995661,
-    "error": null,
-    "wall_time_total_s": 25.287457171012647
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 100000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 2833,
-    "trial": 2,
-    "seed": 2,
-    "wall_time_s": 20.48720069101546,
-    "normalised_mae": 0.3943524413521474,
-    "raw_mae": 5.698478583189773,
-    "per_param_error": {
-      "sin_lat": 0.5166538601491418,
-      "spot_long": 0.6643808859204617,
-      "spot_size": 0.2617893350107465,
-      "spot_flux": 0.17989988327026385,
-      "p_rot": 0.14106393018063826,
-      "planet_radius": 0.1575571465135602,
-      "ldc_q1": 0.2429633759907217,
-      "ldc_q2": 0.40456665180019097,
-      "semimajor_axis": 0.07439291929167176,
-      "impact_param": 0.7851070477333212,
-      "ecc_h": 0.07108452343662669,
-      "ecc_k": 1.2562620780199254,
-      "P_orb": 0.37086010026064636
-    },
-    "posterior_means": {
-      "sin_lat": 0.3854459822177887,
-      "spot_long": 74.04448699951172,
-      "spot_size": 14.010538101196289,
-      "spot_flux": 0.7449749708175659,
-      "p_rot": 0.5141063928604126,
-      "planet_radius": 0.10602676868438721,
-      "ldc_q1": 0.4301374852657318,
-      "ldc_q2": 0.2165450006723404,
-      "semimajor_axis": 3.2532405853271484,
-      "impact_param": 0.45328158140182495,
-      "ecc_h": -0.0035542261321097612,
-      "ecc_k": 0.06281310319900513,
-      "P_orb": 0.9998145699501038
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 56.0,
-    "actual_oracle_evals": 99990,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.006234596483409405,
-    "error": null,
-    "wall_time_total_s": 25.092616719019134
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 100000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 2833,
-    "trial": 3,
-    "seed": 3,
-    "wall_time_s": 20.81933064002078,
-    "normalised_mae": 0.5757938144629174,
-    "raw_mae": 19.293252547755735,
-    "per_param_error": {
-      "sin_lat": 0.6673262999488616,
-      "spot_long": 2.327396140957725,
-      "spot_size": 0.6598450818102214,
-      "spot_flux": 0.6570906162261965,
-      "p_rot": 0.269759598408933,
-      "planet_radius": 0.015530720719997683,
-      "ldc_q1": 0.13153531390446682,
-      "ldc_q2": 1.1045379422226982,
-      "semimajor_axis": 0.017342171950913695,
-      "impact_param": 0.2451510575773691,
-      "ecc_h": 0.8554001993171894,
-      "ecc_k": 0.2606999158192417,
-      "P_orb": 0.2737045291541125
-    },
-    "posterior_means": {
-      "sin_lat": 0.4724367558956146,
-      "spot_long": 246.87010192871094,
-      "spot_size": 18.588119506835938,
-      "spot_flux": 0.8642726540565491,
-      "p_rot": 0.47302404046058655,
-      "planet_radius": 0.0994059294462204,
-      "ldc_q1": 0.397970974445343,
-      "ldc_q2": 0.014480694197118282,
-      "semimajor_axis": 3.9856438636779785,
-      "impact_param": 0.1415378451347351,
-      "ecc_h": -0.042770009487867355,
-      "ecc_k": 0.013034995645284653,
-      "P_orb": 1.0001368522644043
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 92.0,
-    "actual_oracle_evals": 99990,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.007934198714792728,
-    "error": null,
-    "wall_time_total_s": 25.39829275297234
-  },
-  {
-    "algorithm": "deo",
-    "budget_lde": 100000,
-    "effort_param": "NUM_SAMPLES",
-    "effort_value": 2833,
-    "trial": 4,
-    "seed": 4,
-    "wall_time_s": 20.43073772697244,
-    "normalised_mae": 0.4071830903843118,
-    "raw_mae": 12.843182416470123,
-    "per_param_error": {
-      "sin_lat": 0.057334433168420414,
-      "spot_long": 1.5716654059077575,
-      "spot_size": 0.24904492871236839,
-      "spot_flux": 0.2676891803741457,
-      "p_rot": 0.1970550439922703,
-      "planet_radius": 0.12095698837458697,
-      "ldc_q1": 0.37293096716351987,
-      "ldc_q2": 0.46320273892565234,
-      "semimajor_axis": 0.01834142110524427,
-      "impact_param": 0.21336951164596468,
-      "ecc_h": 0.33292331173557765,
-      "ecc_k": 0.4725693219069689,
-      "P_orb": 0.956296921983576
-    },
-    "posterior_means": {
-      "sin_lat": 0.12025778740644455,
-      "spot_long": 168.33226013183594,
-      "spot_size": 13.86397933959961,
-      "spot_flux": 0.7669222950935364,
-      "p_rot": 0.48029449582099915,
-      "planet_radius": 0.09537323564291,
-      "ldc_q1": 0.46765589714050293,
-      "ldc_q2": 0.19961822032928467,
-      "semimajor_axis": 3.972815752029419,
-      "impact_param": -0.12318912893533707,
-      "ecc_h": 0.016646165400743484,
-      "ecc_k": -0.023628465831279755,
-      "P_orb": 1.0004781484603882
-    },
-    "ground_truth": {
-      "sin_lat": 0.08715573698282242,
-      "spot_long": 5.0,
-      "spot_size": 11.0,
-      "spot_flux": 0.7,
-      "p_rot": 0.5,
-      "planet_radius": 0.1,
-      "ldc_q1": 0.3600000000000001,
-      "ldc_q2": 0.3333333333333333,
-      "semimajor_axis": 4.208278345829606,
-      "impact_param": -1.8394968037682702e-07,
-      "ecc_h": 0.0,
-      "ecc_k": 0.0,
-      "P_orb": 1.0
-    },
-    "total_bulk_ess": 120.0,
-    "actual_oracle_evals": 99990,
-    "actual_oracle_type": "logp",
-    "lc_rmse": 0.010480793192982674,
-    "error": null,
-    "wall_time_total_s": 25.05612270301208
-  },
-  {
-    "algorithm": "deo",
     "budget_lde": 200000,
     "effort_param": "NUM_SAMPLES",
     "effort_value": 6166,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 36.51746468502097,
+    "wall_time_s": 64.1617140029557,
     "normalised_mae": 0.5906844119874228,
     "raw_mae": 0.463980502776509,
     "per_param_error": {
@@ -679,7 +59,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.000287351431325078,
     "error": null,
-    "wall_time_total_s": 41.424778807966504
+    "wall_time_total_s": 71.47153747396078
   },
   {
     "algorithm": "deo",
@@ -688,7 +68,7 @@
     "effort_value": 6166,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 35.11274271598086,
+    "wall_time_s": 44.663625227985904,
     "normalised_mae": 0.780553748078624,
     "raw_mae": 23.014693324084682,
     "per_param_error": {
@@ -741,7 +121,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.008189395070075989,
     "error": null,
-    "wall_time_total_s": 39.86265543400077
+    "wall_time_total_s": 51.493663963046856
   },
   {
     "algorithm": "deo",
@@ -750,7 +130,7 @@
     "effort_value": 6166,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 35.251858386036474,
+    "wall_time_s": 44.61034327396192,
     "normalised_mae": 0.4845326896619477,
     "raw_mae": 2.9129960839248747,
     "per_param_error": {
@@ -801,9 +181,9 @@
     "total_bulk_ess": 105.0,
     "actual_oracle_evals": 199980,
     "actual_oracle_type": "logp",
-    "lc_rmse": 0.003331946674734354,
+    "lc_rmse": 0.0033319704234600067,
     "error": null,
-    "wall_time_total_s": 40.07047375198454
+    "wall_time_total_s": 51.500532259000465
   },
   {
     "algorithm": "deo",
@@ -812,7 +192,7 @@
     "effort_value": 6166,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 34.9567757039913,
+    "wall_time_s": 44.77434517792426,
     "normalised_mae": 0.6681103431364501,
     "raw_mae": 24.177131412091043,
     "per_param_error": {
@@ -865,7 +245,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.004694920498877764,
     "error": null,
-    "wall_time_total_s": 39.777383843029384
+    "wall_time_total_s": 51.684130333014764
   },
   {
     "algorithm": "deo",
@@ -874,7 +254,7 @@
     "effort_value": 6166,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 36.8514009549981,
+    "wall_time_s": 45.025779623072594,
     "normalised_mae": 0.4527202876007046,
     "raw_mae": 14.951121540649124,
     "per_param_error": {
@@ -927,7 +307,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.010474199429154396,
     "error": null,
-    "wall_time_total_s": 41.69746422802564
+    "wall_time_total_s": 51.911662918981165
   },
   {
     "algorithm": "deo",
@@ -936,7 +316,7 @@
     "effort_value": 16166,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 82.23335892695468,
+    "wall_time_s": 111.76817615597975,
     "normalised_mae": 0.46609818850904117,
     "raw_mae": 0.3426577562245552,
     "per_param_error": {
@@ -989,7 +369,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0015791852492839098,
     "error": null,
-    "wall_time_total_s": 87.9817366739735
+    "wall_time_total_s": 119.54940983001143
   },
   {
     "algorithm": "deo",
@@ -998,7 +378,7 @@
     "effort_value": 16166,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 80.32305522402748,
+    "wall_time_s": 108.79246828902978,
     "normalised_mae": 0.5098847220281159,
     "raw_mae": 8.82471615656802,
     "per_param_error": {
@@ -1051,7 +431,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.011315564624965191,
     "error": null,
-    "wall_time_total_s": 85.70491680095438
+    "wall_time_total_s": 116.21220476494636
   },
   {
     "algorithm": "deo",
@@ -1060,7 +440,7 @@
     "effort_value": 16166,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 80.28584974899422,
+    "wall_time_s": 108.49286601308268,
     "normalised_mae": 0.45543260253436674,
     "raw_mae": 16.3533331763495,
     "per_param_error": {
@@ -1113,7 +493,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.009568327106535435,
     "error": null,
-    "wall_time_total_s": 85.74626323301345
+    "wall_time_total_s": 115.99186422396451
   },
   {
     "algorithm": "deo",
@@ -1122,7 +502,7 @@
     "effort_value": 16166,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 79.55907899799058,
+    "wall_time_s": 108.73658502392936,
     "normalised_mae": 0.8087693739039612,
     "raw_mae": 26.679208798136173,
     "per_param_error": {
@@ -1175,7 +555,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.002101205987855792,
     "error": null,
-    "wall_time_total_s": 84.96325460699154
+    "wall_time_total_s": 116.19480882806238
   },
   {
     "algorithm": "deo",
@@ -1184,7 +564,7 @@
     "effort_value": 16166,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 80.33106533798855,
+    "wall_time_s": 108.56876570603345,
     "normalised_mae": 0.405233514868544,
     "raw_mae": 8.391055221614188,
     "per_param_error": {
@@ -1237,7 +617,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.008300699293613434,
     "error": null,
-    "wall_time_total_s": 85.9625556729734
+    "wall_time_total_s": 116.23201134102419
   },
   {
     "algorithm": "deo",
@@ -1246,7 +626,7 @@
     "effort_value": 32833,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 154.81023852800718,
+    "wall_time_s": 218.3796935620485,
     "normalised_mae": 0.28324540470120424,
     "raw_mae": 0.20123379939113853,
     "per_param_error": {
@@ -1297,9 +677,9 @@
     "total_bulk_ess": 53.0,
     "actual_oracle_evals": 999990,
     "actual_oracle_type": "logp",
-    "lc_rmse": 0.002224590862169862,
+    "lc_rmse": 0.0022246388252824545,
     "error": null,
-    "wall_time_total_s": 161.58651497901883
+    "wall_time_total_s": 227.3134063059697
   },
   {
     "algorithm": "deo",
@@ -1308,7 +688,7 @@
     "effort_value": 32833,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 150.68946670700097,
+    "wall_time_s": 214.83965890901163,
     "normalised_mae": 0.5683331033644137,
     "raw_mae": 4.404767037682515,
     "per_param_error": {
@@ -1361,7 +741,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.006982958409935236,
     "error": null,
-    "wall_time_total_s": 157.17853619501693
+    "wall_time_total_s": 223.36117560893763
   },
   {
     "algorithm": "deo",
@@ -1370,7 +750,7 @@
     "effort_value": 32833,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 152.40331660199445,
+    "wall_time_s": 215.16185358399525,
     "normalised_mae": 0.4173992287478238,
     "raw_mae": 20.213764787299986,
     "per_param_error": {
@@ -1421,9 +801,9 @@
     "total_bulk_ess": 82.0,
     "actual_oracle_evals": 999990,
     "actual_oracle_type": "logp",
-    "lc_rmse": 0.00756958918645978,
+    "lc_rmse": 0.007569613866508007,
     "error": null,
-    "wall_time_total_s": 158.67023123701802
+    "wall_time_total_s": 223.41672984790057
   },
   {
     "algorithm": "deo",
@@ -1432,7 +812,7 @@
     "effort_value": 32833,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 150.7596731610247,
+    "wall_time_s": 214.92380985198542,
     "normalised_mae": 0.7738524351812247,
     "raw_mae": 27.44010208742253,
     "per_param_error": {
@@ -1485,7 +865,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.001076931250281632,
     "error": null,
-    "wall_time_total_s": 157.32242319599027
+    "wall_time_total_s": 223.5522862590151
   },
   {
     "algorithm": "deo",
@@ -1494,7 +874,7 @@
     "effort_value": 32833,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 150.99452703801217,
+    "wall_time_s": 215.08685003698338,
     "normalised_mae": 0.3275767889142376,
     "raw_mae": 4.141296766220496,
     "per_param_error": {
@@ -1547,7 +927,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0052914684638381,
     "error": null,
-    "wall_time_total_s": 157.20719845499843
+    "wall_time_total_s": 223.3459157430334
   },
   {
     "algorithm": "deo",
@@ -1556,7 +936,7 @@
     "effort_value": 66166,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 297.48671223496785,
+    "wall_time_s": 430.9212412110064,
     "normalised_mae": 0.22737116138955626,
     "raw_mae": 0.14625532346934622,
     "per_param_error": {
@@ -1609,7 +989,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0014763318467885256,
     "error": null,
-    "wall_time_total_s": 305.8261179890251
+    "wall_time_total_s": 441.3289161430439
   },
   {
     "algorithm": "deo",
@@ -1618,7 +998,7 @@
     "effort_value": 66166,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 297.01641896297224,
+    "wall_time_s": 427.60099477204494,
     "normalised_mae": 0.6666304799572266,
     "raw_mae": 2.2679622653994933,
     "per_param_error": {
@@ -1671,7 +1051,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0037896446883678436,
     "error": null,
-    "wall_time_total_s": 305.2860004530521
+    "wall_time_total_s": 437.876277109026
   },
   {
     "algorithm": "deo",
@@ -1680,7 +1060,7 @@
     "effort_value": 66166,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 295.4581481710193,
+    "wall_time_s": 428.3387849449646,
     "normalised_mae": 0.42470250451873326,
     "raw_mae": 20.262156976267242,
     "per_param_error": {
@@ -1733,7 +1113,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.007361921947449446,
     "error": null,
-    "wall_time_total_s": 303.6840905909776
+    "wall_time_total_s": 438.5930402750382
   },
   {
     "algorithm": "deo",
@@ -1742,7 +1122,7 @@
     "effort_value": 66166,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 294.75015286699636,
+    "wall_time_s": 427.8517477620626,
     "normalised_mae": 0.5878810786735764,
     "raw_mae": 23.764349756134717,
     "per_param_error": {
@@ -1793,9 +1173,9 @@
     "total_bulk_ess": 62.0,
     "actual_oracle_evals": 1999980,
     "actual_oracle_type": "logp",
-    "lc_rmse": 0.00502348504960537,
+    "lc_rmse": 0.005023498088121414,
     "error": null,
-    "wall_time_total_s": 302.8460189139587
+    "wall_time_total_s": 437.9553339680424
   },
   {
     "algorithm": "deo",
@@ -1804,7 +1184,7 @@
     "effort_value": 66166,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 295.05878198496066,
+    "wall_time_s": 427.8863636540482,
     "normalised_mae": 0.2938501591206182,
     "raw_mae": 4.207364682489981,
     "per_param_error": {
@@ -1857,6 +1237,68 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.005072262603789568,
     "error": null,
-    "wall_time_total_s": 303.13861710298806
+    "wall_time_total_s": 437.9788266400574
+  },
+  {
+    "algorithm": "deo",
+    "budget_lde": 5000000,
+    "effort_param": "NUM_SAMPLES",
+    "effort_value": 166166,
+    "trial": 0,
+    "seed": 0,
+    "wall_time_s": 1069.283955895924,
+    "normalised_mae": 0.2934048307892288,
+    "raw_mae": 0.12391040446751936,
+    "per_param_error": {
+      "sin_lat": 0.2678237349376054,
+      "spot_long": 0.0014120701578705097,
+      "spot_size": 0.04061967486182074,
+      "spot_flux": 0.06366114616394025,
+      "p_rot": 0.023556053901717673,
+      "planet_radius": 0.03166537538934232,
+      "ldc_q1": 0.20791150867811323,
+      "ldc_q2": 1.3100461274371764,
+      "semimajor_axis": 0.01073284591167062,
+      "impact_param": 0.31617111756427696,
+      "ecc_h": 0.23557614798370172,
+      "ecc_k": 1.0485486058356086,
+      "P_orb": 0.2565383914371298
+    },
+    "posterior_means": {
+      "sin_lat": 0.24178384244441986,
+      "spot_long": 4.853253364562988,
+      "spot_size": 11.467120170593262,
+      "spot_flux": 0.6840847134590149,
+      "p_rot": 0.4976443946361542,
+      "planet_radius": 0.10121124237775803,
+      "ldc_q1": 0.29998111724853516,
+      "ldc_q2": 0.7115110754966736,
+      "semimajor_axis": 4.070492744445801,
+      "impact_param": 0.18254129588603973,
+      "ecc_h": 0.011778807267546654,
+      "ecc_k": -0.05242742970585823,
+      "P_orb": 1.0001282691955566
+    },
+    "ground_truth": {
+      "sin_lat": 0.08715573698282242,
+      "spot_long": 5.0,
+      "spot_size": 11.0,
+      "spot_flux": 0.7,
+      "p_rot": 0.5,
+      "planet_radius": 0.1,
+      "ldc_q1": 0.3600000000000001,
+      "ldc_q2": 0.3333333333333333,
+      "semimajor_axis": 4.208278345829606,
+      "impact_param": -1.8394968037682702e-07,
+      "ecc_h": 0.0,
+      "ecc_k": 0.0,
+      "P_orb": 1.0
+    },
+    "total_bulk_ess": 73.0,
+    "actual_oracle_evals": 4999980,
+    "actual_oracle_type": "logp",
+    "lc_rmse": 0.0008123870356939733,
+    "error": null,
+    "wall_time_total_s": 1085.9926458740374
   }
 ]
