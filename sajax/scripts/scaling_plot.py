@@ -47,12 +47,13 @@ def load_records(algorithms: list) -> list:
 
 def aggregate(records: list) -> dict:
     out = defaultdict(lambda: defaultdict(lambda: {
-        "wall_times":   [],
-        "norm_maes":    [],
-        "raw_maes":     [],
-        "actual_evals": [],
-        "ess":          [],
-        "lc_rmses":     [],
+        "wall_times":    [],
+        "norm_maes":     [],
+        "raw_maes":      [],
+        "actual_evals":  [],
+        "ess":           [],
+        "lc_rmses":      [],
+        "norm_lc_rmses": [],
     }))
     for rec in records:
         if rec.get("error") or rec["normalised_mae"] is None:
@@ -68,6 +69,7 @@ def aggregate(records: list) -> dict:
             out[a][b]["ess"].append(rec["total_bulk_ess"])
         if rec.get("lc_rmse") is not None:
             out[a][b]["lc_rmses"].append(rec["lc_rmse"])
+            out[a][b]["norm_lc_rmses"].append(rec["lc_rmse"] / 100e-6)
     return out
 
 
@@ -293,11 +295,11 @@ def print_summary_table(records: list, algo_order: list) -> None:
     agg = aggregate(records)
 
     print("\n" + "=" * 100)
-    print("  SUMMARY: Median normalised MAE and wall time per algorithm per budget")
+    print("  SUMMARY: Median RMSE/(100 ppm) and wall time per algorithm per budget")
     print("=" * 100)
 
     header = f"  {'Algorithm':<12} {'Budget':>10}"
-    header += f"  {'Norm MAE':>10}  {'Wall (s)':>9}  {'ESS':>8}  {'Oracle':>10}  {'Util %':>7}"
+    header += f"  {'RMSE/100ppm':>12}  {'Wall (s)':>9}  {'ESS':>8}  {'Oracle':>10}  {'Util %':>7}"
     print(header)
     print("  " + "-" * (len(header) - 2))
 
@@ -306,14 +308,14 @@ def print_summary_table(records: list, algo_order: list) -> None:
             continue
         for budget in sorted(agg[algo].keys()):
             d = agg[algo][budget]
-            n_mae  = np.median(d["norm_maes"])   if d["norm_maes"]   else float("nan")
-            wall   = np.median(d["wall_times"])   if d["wall_times"]   else float("nan")
-            ess    = np.median(d["ess"])           if d["ess"]           else float("nan")
-            oracle = np.median(d["actual_evals"]) if d["actual_evals"] else float("nan")
-            util   = (oracle / budget * 100) if not np.isnan(oracle) else float("nan")
+            norm_rmse = np.median(d["norm_lc_rmses"]) if d["norm_lc_rmses"] else float("nan")
+            wall      = np.median(d["wall_times"])    if d["wall_times"]    else float("nan")
+            ess       = np.median(d["ess"])            if d["ess"]            else float("nan")
+            oracle    = np.median(d["actual_evals"])  if d["actual_evals"]  else float("nan")
+            util      = (oracle / budget * 100) if not np.isnan(oracle) else float("nan")
             print(
                 f"  {ALGO_LABELS.get(algo, algo):<12} {budget:>10,}"
-                f"  {n_mae:>10.4f}  {wall:>9.1f}  {ess:>8.0f}  {oracle:>10.0f}  {util:>6.1f}%"
+                f"  {norm_rmse:>12.4f}  {wall:>9.1f}  {ess:>8.0f}  {oracle:>10.0f}  {util:>6.1f}%"
             )
         print()
 
@@ -357,19 +359,21 @@ def make_plots(records: list, algo_order: list) -> None:
     )
     _plot_metric_vs_x(
         agg, present,
-        x_key="budget", y_key="lc_rmses",
+        x_key="budget", y_key="norm_lc_rmses",
         fname="lc_rmse_vs_budget.png",
         xlabel="Log-density-equivalent budget (LDE)",
-        ylabel="Light-curve RMSE vs. truth",
+        ylabel="Light-curve RMSE / 100 ppm",
         title="Best-fit light-curve RMSE vs. compute budget",
+        logy=True,
     )
     _plot_metric_vs_x(
         agg, present,
-        x_key="wall_times", y_key="lc_rmses",
+        x_key="wall_times", y_key="norm_lc_rmses",
         fname="lc_rmse_vs_wall_time.png",
         xlabel="Wall-clock time (s)",
-        ylabel="Light-curve RMSE vs. truth",
+        ylabel="Light-curve RMSE / 100 ppm",
         title="Best-fit light-curve RMSE vs. wall-clock time",
+        logy=True,
     )
     _plot_budget_utilisation(agg, present)
     _plot_per_param_recovery(records, present)
