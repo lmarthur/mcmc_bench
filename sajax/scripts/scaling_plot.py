@@ -52,6 +52,7 @@ def aggregate(records: list) -> dict:
         "raw_maes":     [],
         "actual_evals": [],
         "ess":          [],
+        "lc_rmses":     [],
     }))
     for rec in records:
         if rec.get("error") or rec["normalised_mae"] is None:
@@ -65,6 +66,8 @@ def aggregate(records: list) -> dict:
             out[a][b]["actual_evals"].append(rec["actual_oracle_evals"])
         if rec["total_bulk_ess"] is not None:
             out[a][b]["ess"].append(rec["total_bulk_ess"])
+        if rec.get("lc_rmse") is not None:
+            out[a][b]["lc_rmses"].append(rec["lc_rmse"])
     return out
 
 
@@ -351,6 +354,22 @@ def make_plots(records: list, algo_order: list) -> None:
         ylabel="Total bulk ESS (ArviZ)",
         title="Effective sample size vs. compute budget",
         logy=True,
+    )
+    _plot_metric_vs_x(
+        agg, present,
+        x_key="budget", y_key="lc_rmses",
+        fname="lc_rmse_vs_budget.png",
+        xlabel="Log-density-equivalent budget (LDE)",
+        ylabel="Light-curve RMSE vs. truth",
+        title="Best-fit light-curve RMSE vs. compute budget",
+    )
+    _plot_metric_vs_x(
+        agg, present,
+        x_key="wall_times", y_key="lc_rmses",
+        fname="lc_rmse_vs_wall_time.png",
+        xlabel="Wall-clock time (s)",
+        ylabel="Light-curve RMSE vs. truth",
+        title="Best-fit light-curve RMSE vs. wall-clock time",
     )
     _plot_budget_utilisation(agg, present)
     _plot_per_param_recovery(records, present)
