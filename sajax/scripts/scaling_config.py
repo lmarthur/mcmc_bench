@@ -22,7 +22,7 @@ SCALING_OUT_DIR = OUTPUT_DIR / "scaling_compute"
 # Budget levels and trial count
 # ---------------------------------------------------------------------------
 
-LOGP_BUDGETS = [200_000, 500_000, 1_000_000, 2_000_000]
+LOGP_BUDGETS = [100_000, 200_000, 500_000, 1_000_000]
 NUM_TRIALS   = 5  # seeds 0 .. NUM_TRIALS-1
 
 # ---------------------------------------------------------------------------
@@ -78,8 +78,8 @@ ALGO_COLORS = {
 
 # Minimum values to avoid degenerate runs
 MIN_SAMPLES     = 100
-MIN_PARTICLES   = 50
-MIN_LIVE_POINTS = 50
+MIN_PARTICLES   = 10
+MIN_LIVE_POINTS = 10
 
 # ---------------------------------------------------------------------------
 # Prior standard deviations for normalisation

@@ -6,7 +6,7 @@
     "effort_value": 6166,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 77.51884481799789,
+    "wall_time_s": 64.1617140029557,
     "normalised_mae": 0.5906844119874228,
     "raw_mae": 0.463980502776509,
     "per_param_error": {
@@ -59,7 +59,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.000287351431325078,
     "error": null,
-    "wall_time_total_s": 85.10634073699475
+    "wall_time_total_s": 71.47153747396078
   },
   {
     "algorithm": "deo",
@@ -68,7 +68,7 @@
     "effort_value": 6166,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 49.57309855300991,
+    "wall_time_s": 44.663625227985904,
     "normalised_mae": 0.780553748078624,
     "raw_mae": 23.014693324084682,
     "per_param_error": {
@@ -121,7 +121,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.008189395070075989,
     "error": null,
-    "wall_time_total_s": 56.52042302300106
+    "wall_time_total_s": 51.493663963046856
   },
   {
     "algorithm": "deo",
@@ -130,7 +130,7 @@
     "effort_value": 6166,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 50.22703315099352,
+    "wall_time_s": 44.61034327396192,
     "normalised_mae": 0.4845326896619477,
     "raw_mae": 2.9129960839248747,
     "per_param_error": {
@@ -183,7 +183,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0033319704234600067,
     "error": null,
-    "wall_time_total_s": 57.25909333099844
+    "wall_time_total_s": 51.500532259000465
   },
   {
     "algorithm": "deo",
@@ -192,7 +192,7 @@
     "effort_value": 6166,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 50.671389620998525,
+    "wall_time_s": 44.77434517792426,
     "normalised_mae": 0.6681103431364501,
     "raw_mae": 24.177131412091043,
     "per_param_error": {
@@ -245,7 +245,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.004694920498877764,
     "error": null,
-    "wall_time_total_s": 57.73372054599167
+    "wall_time_total_s": 51.684130333014764
   },
   {
     "algorithm": "deo",
@@ -254,7 +254,7 @@
     "effort_value": 6166,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 50.59522995700536,
+    "wall_time_s": 45.025779623072594,
     "normalised_mae": 0.4527202876007046,
     "raw_mae": 14.951121540649124,
     "per_param_error": {
@@ -307,7 +307,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.010474199429154396,
     "error": null,
-    "wall_time_total_s": 57.625499845991726
+    "wall_time_total_s": 51.911662918981165
   },
   {
     "algorithm": "deo",
@@ -316,7 +316,7 @@
     "effort_value": 16166,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 117.50275776600756,
+    "wall_time_s": 111.76817615597975,
     "normalised_mae": 0.46609818850904117,
     "raw_mae": 0.3426577562245552,
     "per_param_error": {
@@ -369,7 +369,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0015791852492839098,
     "error": null,
-    "wall_time_total_s": 125.75167104700813
+    "wall_time_total_s": 119.54940983001143
   },
   {
     "algorithm": "deo",
@@ -378,7 +378,7 @@
     "effort_value": 16166,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 114.5837086889951,
+    "wall_time_s": 108.79246828902978,
     "normalised_mae": 0.5098847220281159,
     "raw_mae": 8.82471615656802,
     "per_param_error": {
@@ -431,7 +431,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.011315564624965191,
     "error": null,
-    "wall_time_total_s": 122.3592839740013
+    "wall_time_total_s": 116.21220476494636
   },
   {
     "algorithm": "deo",
@@ -440,7 +440,7 @@
     "effort_value": 16166,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 114.38899711899285,
+    "wall_time_s": 108.49286601308268,
     "normalised_mae": 0.45543260253436674,
     "raw_mae": 16.3533331763495,
     "per_param_error": {
@@ -493,7 +493,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.009568327106535435,
     "error": null,
-    "wall_time_total_s": 122.28116331499768
+    "wall_time_total_s": 115.99186422396451
   },
   {
     "algorithm": "deo",
@@ -502,7 +502,7 @@
     "effort_value": 16166,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 114.59753186900343,
+    "wall_time_s": 108.73658502392936,
     "normalised_mae": 0.8087693739039612,
     "raw_mae": 26.679208798136173,
     "per_param_error": {
@@ -555,7 +555,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.002101205987855792,
     "error": null,
-    "wall_time_total_s": 122.41178436500195
+    "wall_time_total_s": 116.19480882806238
   },
   {
     "algorithm": "deo",
@@ -564,7 +564,7 @@
     "effort_value": 16166,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 113.62287478000508,
+    "wall_time_s": 108.56876570603345,
     "normalised_mae": 0.405233514868544,
     "raw_mae": 8.391055221614188,
     "per_param_error": {
@@ -617,7 +617,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.008300699293613434,
     "error": null,
-    "wall_time_total_s": 121.72788449600921
+    "wall_time_total_s": 116.23201134102419
   },
   {
     "algorithm": "deo",
@@ -626,7 +626,7 @@
     "effort_value": 32833,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 223.533061419992,
+    "wall_time_s": 218.3796935620485,
     "normalised_mae": 0.28324540470120424,
     "raw_mae": 0.20123379939113853,
     "per_param_error": {
@@ -679,7 +679,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0022246388252824545,
     "error": null,
-    "wall_time_total_s": 233.7266151310032
+    "wall_time_total_s": 227.3134063059697
   },
   {
     "algorithm": "deo",
@@ -688,7 +688,7 @@
     "effort_value": 32833,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 222.59109678000095,
+    "wall_time_s": 214.83965890901163,
     "normalised_mae": 0.5683331033644137,
     "raw_mae": 4.404767037682515,
     "per_param_error": {
@@ -741,7 +741,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.006982958409935236,
     "error": null,
-    "wall_time_total_s": 232.17951473299763
+    "wall_time_total_s": 223.36117560893763
   },
   {
     "algorithm": "deo",
@@ -750,7 +750,7 @@
     "effort_value": 32833,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 223.0109113609942,
+    "wall_time_s": 215.16185358399525,
     "normalised_mae": 0.4173992287478238,
     "raw_mae": 20.213764787299986,
     "per_param_error": {
@@ -803,7 +803,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.007569613866508007,
     "error": null,
-    "wall_time_total_s": 232.19001245000982
+    "wall_time_total_s": 223.41672984790057
   },
   {
     "algorithm": "deo",
@@ -812,7 +812,7 @@
     "effort_value": 32833,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 222.9247122779925,
+    "wall_time_s": 214.92380985198542,
     "normalised_mae": 0.7738524351812247,
     "raw_mae": 27.44010208742253,
     "per_param_error": {
@@ -865,7 +865,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.001076931250281632,
     "error": null,
-    "wall_time_total_s": 232.65539499399893
+    "wall_time_total_s": 223.5522862590151
   },
   {
     "algorithm": "deo",
@@ -874,7 +874,7 @@
     "effort_value": 32833,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 223.29734713801008,
+    "wall_time_s": 215.08685003698338,
     "normalised_mae": 0.3275767889142376,
     "raw_mae": 4.141296766220496,
     "per_param_error": {
@@ -927,7 +927,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0052914684638381,
     "error": null,
-    "wall_time_total_s": 232.4871711119922
+    "wall_time_total_s": 223.3459157430334
   },
   {
     "algorithm": "deo",
@@ -936,7 +936,7 @@
     "effort_value": 66166,
     "trial": 0,
     "seed": 0,
-    "wall_time_s": 439.1025454640039,
+    "wall_time_s": 430.9212412110064,
     "normalised_mae": 0.22737116138955626,
     "raw_mae": 0.14625532346934622,
     "per_param_error": {
@@ -989,7 +989,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0014763318467885256,
     "error": null,
-    "wall_time_total_s": 451.5775172149879
+    "wall_time_total_s": 441.3289161430439
   },
   {
     "algorithm": "deo",
@@ -998,7 +998,7 @@
     "effort_value": 66166,
     "trial": 1,
     "seed": 1,
-    "wall_time_s": 435.4774420419999,
+    "wall_time_s": 427.60099477204494,
     "normalised_mae": 0.6666304799572266,
     "raw_mae": 2.2679622653994933,
     "per_param_error": {
@@ -1051,7 +1051,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.0037896446883678436,
     "error": null,
-    "wall_time_total_s": 447.75246222599526
+    "wall_time_total_s": 437.876277109026
   },
   {
     "algorithm": "deo",
@@ -1060,7 +1060,7 @@
     "effort_value": 66166,
     "trial": 2,
     "seed": 2,
-    "wall_time_s": 435.9155621610116,
+    "wall_time_s": 428.3387849449646,
     "normalised_mae": 0.42470250451873326,
     "raw_mae": 20.262156976267242,
     "per_param_error": {
@@ -1113,7 +1113,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.007361921947449446,
     "error": null,
-    "wall_time_total_s": 448.1278964350058
+    "wall_time_total_s": 438.5930402750382
   },
   {
     "algorithm": "deo",
@@ -1122,7 +1122,7 @@
     "effort_value": 66166,
     "trial": 3,
     "seed": 3,
-    "wall_time_s": 435.88316595299693,
+    "wall_time_s": 427.8517477620626,
     "normalised_mae": 0.5878810786735764,
     "raw_mae": 23.764349756134717,
     "per_param_error": {
@@ -1175,7 +1175,7 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.005023498088121414,
     "error": null,
-    "wall_time_total_s": 447.9338269019936
+    "wall_time_total_s": 437.9553339680424
   },
   {
     "algorithm": "deo",
@@ -1184,7 +1184,7 @@
     "effort_value": 66166,
     "trial": 4,
     "seed": 4,
-    "wall_time_s": 435.69925713399425,
+    "wall_time_s": 427.8863636540482,
     "normalised_mae": 0.2938501591206182,
     "raw_mae": 4.207364682489981,
     "per_param_error": {
@@ -1237,6 +1237,6 @@
     "actual_oracle_type": "logp",
     "lc_rmse": 0.005072262603789568,
     "error": null,
-    "wall_time_total_s": 447.7212365040032
+    "wall_time_total_s": 437.9788266400574
   }
 ]
