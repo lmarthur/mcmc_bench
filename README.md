@@ -1,14 +1,13 @@
-# Class 6.7830 - Bayesian Modeling and Inference - Final Project
+# mcmc-bench
 
-Project Pre-proposal Google Docs [link](https://docs.google.com/document/d/10dxllF_9HKoAEWeWYtg3HkMVfwvhc1fx0QWjYhUD3fQ/edit?usp=sharing)
+Benchmarking MCMC samplers on multimodal posterior inference problems in astrophysics and exoplanet science. All inference algorithms are implemented in JAX via [BlackJAX](https://github.com/blackjax-devs/blackjax), [NumPyro](https://github.com/pyro-ppl/numpyro), and related packages.
 
+## Setup
 
-# Setup
-
-## Prerequisites
+### Prerequisites
 - [conda](https://docs.conda.io/en/latest/) (or miniconda)
 
-## Installation
+### Installation
 
 ```bash
 conda create -n mcmc_bench python=3.11 -y
@@ -24,29 +23,25 @@ bash setup_env.sh
 pytest --rootdir=. -v
 ```
 
-# Proposal Outline
+## Benchmark Problems
 
-## What do you want to do? What questions are you answering?
-The primary goal is to benchmark a set of MCMC samplers on multimodal posterior inference problems. We want to evaluate the samplers on a set of metrics covering speed and ability to recover all of the modes. In particular, we want to test the samplers on problems specific to astrophysics and exoplanet science. 
+Two problems are included, each under its own directory with a common structure (`src/model.py` for the model, `scripts/<algo>.py` for each sampler):
 
-## How does your question and your approach relate to this class? 
-In the readings and the lectures we have reviewed a number of MCMC methods, from RWMH to HMC and NUTS. However, these methods are not very popular in the astrophysics and exoplanet communities. The primary reason that is cited is that astrophysical posteriors are often multimodal. So, we want to test how the commonly used samplers in astrophysics compare to the HMC, NUTS, and similar algorithms common in the statistics literature. We also want to perform these tests in an implementation-agnostic way by implementing all of our inference algorithms in a JAX-compatible way. 
+- **`gaussian_mix/`** — 2D mixture of 8 Gaussians on a regular octagon; fast to evaluate, designed to expose mode-missing failures.
+- **`sajax/`** — 13-parameter exoplanet transit + stellar spot crossing using [sajax](https://github.com/SamMerc/sajax) and [jaxoplanet](https://github.com/exoplanet-dev/jaxoplanet).
 
-## What data will you use? 
-I think we should use at least one toy model, perhaps a Gaussian mixture, that can be constructed to have several modes. We can also fit an exoplanet transit with a spot, for which we can easily create synthetic data and already have much of the existing code. Another possible test is atmospheric retrievals, for which we have an implementation that currently relies on the emcee package, which runs affine-invariant MCMC. 
+Samplers available for each problem: RWMH, NUTS, DEO/SEO parallel tempering, SMC, nested sampling (JAXNS), and affine-invariant ensemble (emcee_jax).
 
-## What is some relevant work?
-- Non-reversible parallel tempering: [link](https://ui.adsabs.harvard.edu/abs/2019arXiv190502939S/abstract)
-- Dynamic temperature selection for parallel tempering in MCMC simulations [link](https://ui.adsabs.harvard.edu/abs/2016MNRAS.455.1919V/abstract)
-- Modern Bayesian Sampling Methods for Cosmological Inference [link](https://arxiv.org/pdf/2501.06022)
+To run a sampler:
+```bash
+python gaussian_mix/scripts/rwmh.py
+python sajax/scripts/deo.py
+```
 
-## What is your project plan?
-- Solidify the example problems and datasets, and get at least one method working for each problem (by proposal deadline)
-- Solidify the metrics of comparison and scoring of each method (by proposal deadline)
-- Outline each of the figures we want to create and include in our paper (by end of month)
-- Implement Non-reversible PT MCMC in JAX/BlackJAX
-- Run trials on each of our algorithms (by mid-April)
-- Review results and write up report (by end of April)
+To run the full benchmark comparison:
+```bash
+python gaussian_mix/scripts/benchmark.py
+python gaussian_mix/scripts/scaling_study_compute.py
+```
 
-## What are the risks? 
-Implementation of PT MCMC may prove more difficult than expected. Some sampling algorithms may simply fail to converge in reasonable time for some of our cases. The number of test cases and number of algorithms that we plan to test may result in excessive compute times that significantly slow our efforts. 
+Results (JSON + plots) are saved under `gaussian_mix/output/` and `sajax/output/`.
