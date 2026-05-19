@@ -25,5 +25,32 @@ jax_cache/
 *.out
 *.err
 
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
+*.nav
+*.snm
+
+# Slides and report working directories
+slides/
+report/
+
+# Per-sampler diagnostic outputs (keep only aggregate benchmark results)
+gaussian_mix/output/*/
+sajax/output/*/
+!gaussian_mix/output/benchmark/
+!gaussian_mix/output/scaling/
+!gaussian_mix/output/scaling_compute/
+!gaussian_mix/output/scaling_study/
+!gaussian_mix/output/gaussian_mixture.pdf
+!sajax/output/scaling_compute/
+!sajax/output/sajax_ground_truth.pdf
+!sajax/output/*/lc_evolution.gif
+
 # Diagnostic figures
-tests/output/*.png
+tests/output/
