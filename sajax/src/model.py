@@ -33,6 +33,15 @@ from astropy.constants import G
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
+# TODO: Extract a single _forward_lc(constrained_params, model_dict) helper and
+#       use it in sajax_model, make_log_likelihood, and compute_lc_from_constrained
+#       to eliminate the duplicated ~25-line forward-pass block.
+# TODO: Make STATIC_MODEL, OBS_LIGHT_CURVE, and LC_TRUE lazy or explicitly
+#       constructed to avoid expensive computation at import time.
+# TODO: Move plot_model, plot_bestfit_lightcurve, and plot_prior_posterior to a
+#       separate plots.py module.
+# TODO: Vmap sample_initial_positions to remove the Python loop over chains.
+
 # ---------------------------------------------------------------------------
 # Planet transit parameters (jaxoplanet)
 # ---------------------------------------------------------------------------
@@ -120,49 +129,42 @@ ECC_K_SCALE = 0.3   # √e·sin(ω) prior scale
 # ---------------------------------------------------------------------------
 # Prior distributions (numpyro) — single source of truth for all samplers
 # ---------------------------------------------------------------------------
-#Narrow
 PRIOR_DISTRIBUTIONS = {
-    "sin_lat":       dist.Uniform(-1.0, 1.0),
-    "spot_long":     dist.Uniform(0, 360),
-    # "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
-    "spot_size":     dist.LogUniform(1.0, 45.0),
-    # "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-    # "spot_flux":     dist.Uniform(0.65, 0.75),
+    "sin_lat":        dist.Uniform(-1.0, 1.0),
+    "spot_long":      dist.Uniform(0, 360),
+    "spot_size":      dist.LogUniform(1.0, 45.0),
     "spot_flux":      dist.Normal(1.0, 0.25),
-    # "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-    # "p_rot":         dist.LogUniform(0.1, 30),
-    "p_rot":         dist.Normal(TRUE_P_ROT, 0.1),
-    "planet_radius": dist.LogUniform(0.01, 0.15),
-    # "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
+    "p_rot":          dist.Normal(TRUE_P_ROT, 0.1),
+    "planet_radius":  dist.LogUniform(0.01, 0.15),
     "semimajor_axis": dist.LogUniform(2.5, 50.0),
-    "impact_param":  dist.Uniform(-1.0, 1.0),
-    "ecc_h":         dist.Normal(0.0, 0.05),
-    # "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
-    "ecc_k":         dist.Normal(0.0, 0.05),
-    # "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
-    "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-    # "ldc_q1":        dist.Uniform(0.34, 0.38),
-    "ldc_q1":        dist.Uniform(0.0, 1.0),
-    # "ldc_q2":        dist.Uniform(0.31, 0.35),
-    "ldc_q2":        dist.Uniform(0.0, 1.0),
+    "impact_param":   dist.Uniform(-1.0, 1.0),
+    "ecc_h":          dist.Normal(0.0, 0.05),
+    "ecc_k":          dist.Normal(0.0, 0.05),
+    "P_orb":          dist.Normal(TRUE_P_ORB, 0.0005),
+    "ldc_q1":         dist.Uniform(0.0, 1.0),
+    "ldc_q2":         dist.Uniform(0.0, 1.0),
 }
 
-#Wide
-# PRIOR_DISTRIBUTIONS = {
-#     "spot_lat":      dist.Uniform(LAT_MIN, LAT_MAX),
-#     "spot_long":     dist.Uniform(LONG_MIN, LONG_MAX),
-#     "spot_size":     dist.Uniform(SIZE_MIN, SIZE_MAX),
-#     "spot_flux":     dist.Uniform(FLUX_MIN, FLUX_MAX),
-#     "p_rot":         dist.LogNormal(jnp.log(TRUE_P_ROT), 1.0),
-#     "planet_radius": dist.LogNormal(jnp.log(TRUE_PLANET_RADIUS), 0.5),
-#     "semimajor_axis":dist.LogNormal(jnp.log(5.0), 0.5),
-#     "inclination":   dist.Uniform(INCLINATION_MIN, INCLINATION_MAX),
-#     "ecc_h":         dist.Normal(0.0, ECC_H_SCALE),
-#     "ecc_k":         dist.Normal(0.0, ECC_K_SCALE),
-#     "P_orb":         dist.Normal(TRUE_P_ORB, 0.0005),
-#     "ldc_q1":        dist.Uniform(0.0, 1.0),
-#     "ldc_q2":        dist.Uniform(0.0, 1.0),
-# }
+# ---------------------------------------------------------------------------
+# Ground truth dict — for sampler diagnostics
+# ---------------------------------------------------------------------------
+GROUND_TRUTH = {
+    "sin_lat":       float(jnp.sin(jnp.deg2rad(TRUE_SPOT_LAT))),
+    "spot_long":     TRUE_SPOT_LONG,
+    "spot_size":     TRUE_SPOT_SIZE,
+    "spot_flux":     FLUX_ACTIVE_SPOT[0],
+    "p_rot":         TRUE_P_ROT,
+    "planet_radius": TRUE_PLANET_RADIUS,
+    "ldc_q1":        (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
+    "ldc_q2":        TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
+    "semimajor_axis": float(TRUE_SEMI_MAJOR),
+    "impact_param":  float(TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)),
+    "ecc_h":         float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
+    "ecc_k":         float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
+    "P_orb":         TRUE_P_ORB,
+}
+
+PARAM_NAMES = list(GROUND_TRUTH.keys())
 
 # ---------------------------------------------------------------------------
 # Pre-build the Static Model for MCMC (Two-Stage API)
@@ -673,28 +675,6 @@ def compute_chi2(constrained: dict, model_dict: dict = STATIC_MODEL) -> float:
     lc = compute_lc_from_constrained(constrained, model_dict)
     n = len(TIMES)
     return float(jnp.sum(((jnp.array(OBS_LIGHT_CURVE) - lc) / SIGMA_NOISE) ** 2) / n)
-
-
-# ---------------------------------------------------------------------------
-# Ground truth dict — for sampler diagnostics
-# ---------------------------------------------------------------------------
-GROUND_TRUTH = {
-    "sin_lat":  float(jnp.sin(jnp.deg2rad(TRUE_SPOT_LAT))),
-    "spot_long": TRUE_SPOT_LONG,
-    "spot_size": TRUE_SPOT_SIZE,
-    "spot_flux": FLUX_ACTIVE_SPOT[0],
-    "p_rot": TRUE_P_ROT,
-    "planet_radius": TRUE_PLANET_RADIUS,
-    "ldc_q1": (TRUE_LDC_U1 + TRUE_LDC_U2) ** 2,
-    "ldc_q2": TRUE_LDC_U1 / (2 * (TRUE_LDC_U1 + TRUE_LDC_U2)),
-    "semimajor_axis": float(TRUE_SEMI_MAJOR),
-    "impact_param":  float(TRUE_SEMI_MAJOR * jnp.cos(TRUE_INCLINATION)),
-    "ecc_h": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.cos(TRUE_ARG_PERIAPSIS)),
-    "ecc_k": float(jnp.sqrt(TRUE_ECCENTRICITY) * jnp.sin(TRUE_ARG_PERIAPSIS)),
-    "P_orb": TRUE_P_ORB,
-}
-
-PARAM_NAMES = list(GROUND_TRUTH.keys())
 
 
 # ---------------------------------------------------------------------------

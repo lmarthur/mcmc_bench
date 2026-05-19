@@ -264,19 +264,19 @@ def test_ground_truth_residuals_at_noise_level():
     match OBS_LIGHT_CURVE to within ~SIGMA_NOISE."""
     ecc_h = GROUND_TRUTH["ecc_h"]
     ecc_k = GROUND_TRUTH["ecc_k"]
-    semimajor_axis = jnp.abs(
-        GROUND_TRUTH["impact_param"] / jnp.cos(jnp.deg2rad(GROUND_TRUTH["inclination"]))
-    )
+    semimajor_axis = GROUND_TRUTH["semimajor_axis"]
+    spot_lat = jnp.rad2deg(jnp.arcsin(GROUND_TRUTH["sin_lat"]))
+    inclination = jnp.arccos(GROUND_TRUTH["impact_param"] / semimajor_axis)
     result = _call_sajax(
         TIMES,
-        jnp.array([GROUND_TRUTH["spot_lat"]]),
+        jnp.array([spot_lat]),
         jnp.array([GROUND_TRUTH["spot_long"]]),
         jnp.array([GROUND_TRUTH["spot_size"]]),
         np.stack([np.array([GROUND_TRUTH["spot_flux"]])]),
         GROUND_TRUTH["p_rot"],
         GROUND_TRUTH["planet_radius"],
         semimajor_axis,
-        jnp.deg2rad(GROUND_TRUTH["inclination"]),
+        inclination,
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
         TRUE_P_ORB,
@@ -298,7 +298,7 @@ def test_two_stage_residuals_at_noise_level():
     gt = GROUND_TRUTH
     m  = STATIC_MODEL
 
-    spot_lat      = gt["spot_lat"]
+    spot_lat      = jnp.rad2deg(jnp.arcsin(gt["sin_lat"]))
     spot_long     = gt["spot_long"]
     spot_size     = gt["spot_size"]
     spot_flux     = gt["spot_flux"]
@@ -306,8 +306,8 @@ def test_two_stage_residuals_at_noise_level():
     LDC_u1        = TRUE_LDC_U1
     LDC_u2        = TRUE_LDC_U2
     planet_radius = gt["planet_radius"]
-    inclination   = jnp.deg2rad(gt["inclination"])
-    semimajor     = jnp.abs(gt["impact_param"] / jnp.cos(inclination))
+    semimajor     = gt["semimajor_axis"]
+    inclination   = jnp.arccos(gt["impact_param"] / semimajor)
     eccentricity  = gt["ecc_h"]**2 + gt["ecc_k"]**2
     arg_periapsis = jnp.arctan2(gt["ecc_k"], gt["ecc_h"])
     P_orb         = TRUE_P_ORB
@@ -383,19 +383,19 @@ def test_call_sajax_activity_only_runs():
     """One-shot API with planet_radius=0 should produce a finite light curve."""
     ecc_h = GROUND_TRUTH["ecc_h"]
     ecc_k = GROUND_TRUTH["ecc_k"]
-    semimajor_axis = jnp.abs(
-        GROUND_TRUTH["impact_param"] / jnp.cos(jnp.deg2rad(GROUND_TRUTH["inclination"]))
-    )
+    semimajor_axis = GROUND_TRUTH["semimajor_axis"]
+    spot_lat = jnp.rad2deg(jnp.arcsin(GROUND_TRUTH["sin_lat"]))
+    inclination = jnp.arccos(GROUND_TRUTH["impact_param"] / semimajor_axis)
     result = _call_sajax(
         TIMES,
-        jnp.array([GROUND_TRUTH["spot_lat"]]),
+        jnp.array([spot_lat]),
         jnp.array([GROUND_TRUTH["spot_long"]]),
         jnp.array([GROUND_TRUTH["spot_size"]]),
         np.stack([np.array([GROUND_TRUTH["spot_flux"]])]),
         GROUND_TRUTH["p_rot"],
         0.0,
         semimajor_axis,
-        jnp.deg2rad(GROUND_TRUTH["inclination"]),
+        inclination,
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
         TRUE_P_ORB,
@@ -426,17 +426,19 @@ def test_plot_api_comparison():
 
     ecc_h = gt["ecc_h"]
     ecc_k = gt["ecc_k"]
-    gt_semimajor = jnp.abs(gt["impact_param"] / jnp.cos(jnp.deg2rad(gt["inclination"])))
+    gt_semimajor = gt["semimajor_axis"]
+    gt_spot_lat = jnp.rad2deg(jnp.arcsin(gt["sin_lat"]))
+    gt_inclination = jnp.arccos(gt["impact_param"] / gt_semimajor)
     lc_one_shot = np.array(_call_sajax(
         TIMES,
-        jnp.array([gt["spot_lat"]]),
+        jnp.array([gt_spot_lat]),
         jnp.array([gt["spot_long"]]),
         jnp.array([gt["spot_size"]]),
         np.stack([np.array([gt["spot_flux"]])]),
         gt["p_rot"],
         gt["planet_radius"],
         gt_semimajor,
-        jnp.deg2rad(gt["inclination"]),
+        gt_inclination,
         ecc_h**2 + ecc_k**2,
         jnp.arctan2(ecc_k, ecc_h),
         TRUE_P_ORB,
@@ -448,12 +450,12 @@ def test_plot_api_comparison():
     LDC_u1        = TRUE_LDC_U1
     LDC_u2        = TRUE_LDC_U2
     planet_radius = gt["planet_radius"]
-    inclination   = jnp.deg2rad(gt["inclination"])
-    semimajor     = jnp.abs(gt["impact_param"] / jnp.cos(inclination))
+    semimajor     = gt_semimajor
+    inclination   = gt_inclination
     eccentricity  = ecc_h**2 + ecc_k**2
     arg_periapsis = jnp.arctan2(ecc_k, ecc_h)
     P_orb         = TRUE_P_ORB
-    ar_lat        = jnp.array([gt["spot_lat"]])
+    ar_lat        = jnp.array([gt_spot_lat])
     ar_long       = jnp.array([gt["spot_long"]])
     ar_size       = jnp.array([gt["spot_size"]])
 
@@ -558,7 +560,6 @@ def test_sample_initial_positions_within_prior_bounds():
         "spot_lat":    (-90.0,  90.0),
         "spot_long":   (  0.0, 360.0),
         "spot_size":   (  1.0,  90.0),
-        "inclination": ( 80.0, 100.0),
         "ldc_q1":      (  0.0,   1.0),
         "ldc_q2":      (  0.0,   1.0),
     }
